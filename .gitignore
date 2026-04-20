@@ -16,6 +16,9 @@ __pycache__/
 /node_modules/
 /.coverage*
 
+# R scratch output
+Rplots.pdf
+
 # docs
 /docs/generated/
 /docs/_build/
