@@ -677,6 +677,16 @@ write.csv(data.frame(barcode = colnames(norm_transform), group = y),
 
 ## ------------------------------------------------------------------- stage 4
 
+## Stage 4 needs an in-memory sparse matrix. read10xCounts on an .h5 returns an
+## HDF5-backed DelayedMatrix, and label_dead.R:163 does `norm_transform@x <- ...`,
+## which requires a dgCMatrix slot — the trained path dies with
+##   no slot of name "x" for this object of class "DelayedMatrix"
+## while train = FALSE succeeds, because it never reaches that line.
+## valiDrops.R:54 accepts dgCMatrix as an input class, so this is ordinary
+## supported usage rather than a patch. Placed here, after the earlier fixtures
+## are already on disk, so they cannot drift.
+counts <- as(counts, "dgCMatrix")
+
 met <- metrics$metrics
 met$qc.pass <- "fail"
 met[met$barcode %in% valid, "qc.pass"] <- "pass"
