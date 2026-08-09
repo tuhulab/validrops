@@ -270,9 +270,12 @@ EXPECTED_ROWS = {
     "human": 106_851,
     "mouse": 82_003,
     "rat": 47_954,
-    "zebrafish": 77_216,
+    # zebrafish is raw sysdata table 6 and fly is table 4 — the load order at
+    # quality_metrics.R:85-90 swaps them. Confirmed by gene symbols, not row counts:
+    # raw[4] has Su(Ste):CR42418 / CG40635 (Drosophila), raw[6] has si:dkey-251i10.2 (Danio).
+    "zebrafish": 67_809,
     "worm": 46_912,
-    "fly": 67_809,
+    "fly": 77_216,
 }
 
 

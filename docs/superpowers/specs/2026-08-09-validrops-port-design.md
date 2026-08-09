@@ -412,18 +412,24 @@ Each takes `adata`, returns a matplotlib `Axes`, and accepts `ax=`.
 
 `sysdata.rda` holds `valiDrops:::annotation`, six tables:
 
-| # | species | rows | columns |
-|---|---|---|---|
-| 1 | human | 106,851 | NCBI, HGNC, Ensembl, Chr, Symbol, Type, Alias |
-| 2 | mouse | 82,003 | NCBI, MGI, Ensembl, Chr, Symbol, Type, Alias |
-| 3 | rat | 47,954 | NCBI, Ensembl, Chr, Symbol, Type, Alias |
-| 4 | zebrafish | 77,216 | as rat |
-| 5 | worm | 46,912 | as rat |
-| 6 | fly | 67,809 | as rat |
+| position | raw index | species | rows | columns |
+|---|---|---|---|---|
+| 1 | 1 | human | 106,851 | NCBI, HGNC, Ensembl, Chr, Symbol, Type, Alias |
+| 2 | 2 | mouse | 82,003 | NCBI, MGI, Ensembl, Chr, Symbol, Type, Alias |
+| 3 | 3 | rat | 47,954 | NCBI, Ensembl, Chr, Symbol, Type, Alias |
+| 4 | **6** | zebrafish | 67,809 | as rat |
+| 5 | 5 | worm | 46,912 | as rat |
+| 6 | **4** | fly | 77,216 | as rat |
 
-Note `quality_metrics.R:85-90` loads them in the order 1,2,3,**6**,5,**4** and then labels indices
-`{1..6}` as `{Human, Mouse, Rat, Zebrafish, Worm, Fly}` (`R:178`). The extraction must reproduce
-that permutation, not the raw `sysdata` order.
+`quality_metrics.R:85-90` loads the tables in the order 1,2,3,**6**,5,**4** and then labels
+positions `{1..6}` as `{Human, Mouse, Rat, Zebrafish, Worm, Fly}` (`R:178`). The extraction must
+reproduce that permutation, not the raw `sysdata` order.
+
+Verified empirically, because getting this backwards is silent: raw table 4 contains *Drosophila*
+nomenclature (`Su(Ste):CR42418`, `Mst77Y-16Psi`, `CG40635`) and raw table 6 contains zebrafish
+clone-based names (`si:ch73-288o11.5`, `si:dkey-251i10.2`, `fgd5b`). Row counts alone cannot
+distinguish them, so any test asserting per-species row counts must be checked against gene
+symbols rather than against this table.
 
 Extraction: `tests/R/extract_annotation.R` writes a single long-format
 `src/validrops/data/annotation.parquet` with a `species` partition column and a nullable
