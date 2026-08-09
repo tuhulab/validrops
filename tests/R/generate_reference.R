@@ -76,7 +76,11 @@ uik_cases <- list(
   concave_increasing = list(x = 1:100, y = log(1:100)),
   sigmoid = list(x = seq(-5, 5, length.out = 100), y = 1 / (1 + exp(-seq(-5, 5, length.out = 100)))),
   step = list(x = 1:100, y = c(rep(1, 40), seq(1, 10, length.out = 20), rep(10, 40))),
-  noisy_elbow = list(x = 1:200, y = pmax(0, 50 - 0.5 * (1:200)) + 0.02 * (1:200))
+  noisy_elbow = list(x = 1:200, y = pmax(0, 50 - 0.5 * (1:200)) + 0.02 * (1:200)),
+  # Oscillating curve whose four sampled chord-deviation signs (at j=25,50,75,100)
+  # disagree ([+,-,+,-]), exercising check_curve's mixed-sign tie-break branch
+  # (uses signs[1] rather than a unanimous sign). Deterministic, no RNG draw.
+  mixed_sign_wave = list(x = 1:100, y = sin((1:100) / 8) * 5 + (1:100) * 0.1)
 )
 uik_rows <- data.frame(
   case = names(uik_cases),
