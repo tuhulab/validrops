@@ -1305,7 +1305,14 @@ def test_segmented_slopes_match_r(ref):
         psi_init = np.array([terms[f"psi_init{i + 1}"] for i in range(npsi)])
         fit = segmented(x, y, psi_init=psi_init, n_boot=0)
         want = np.array([terms[f"slope{i + 1}"] for i in range(npsi + 1)])
-        np.testing.assert_allclose(fit.slopes, want, rtol=1e-6, err_msg=name)
+        # atol is load-bearing, not a fudge: the `plateau` case has an almost-flat
+        # segment whose slope is ~0.0045, and relative tolerance is the wrong metric
+        # for a quantity near zero. The converged breakpoints agree with R to 1.3e-9
+        # relative; that residual solver noise lands as 1.15e-6 *relative* on the
+        # near-zero slope but only 5.2e-9 *absolute*. Feeding R's own psi into the
+        # final refit reproduces R's slopes to 10 significant figures, which is what
+        # establishes the slope arithmetic itself is exact.
+        np.testing.assert_allclose(fit.slopes, want, rtol=1e-6, atol=1e-8, err_msg=name)
 
 
 def test_segmented_rmse_matches_r(ref):
@@ -1383,9 +1390,18 @@ class SegmentedFit:
 
 
 def _default_psi_init(x: np.ndarray, npsi: int) -> np.ndarray:
-    """R's default starting values: equally spaced interior quantiles."""
-    probs = np.linspace(0.0, 1.0, npsi + 2)[1:-1]
-    return np.quantile(x, probs)
+    """R's default starting values: equally spaced across the *range* of x.
+
+    ``seg.control()``'s ``quant`` defaults to ``FALSE``, and ``segmented.lm``
+    then uses ``psiE = min(Z) + diff(range(Z)) * k/(K+1)`` — points spread
+    evenly across the span of x, not quantiles of its distribution. The two
+    coincide only when x is evenly spaced, which is true of the synthetic
+    fixtures but false for real skewed data. Stage 2b and Stage 3b rely on
+    this default; Stage 1 passes ``psi_init`` explicitly and is unaffected.
+    """
+    lo = float(np.min(x))
+    span = float(np.ptp(x))
+    return lo + span * np.arange(1, npsi + 1) / (npsi + 1)
 
 
 def _design(x: np.ndarray, psi: np.ndarray) -> np.ndarray:
