@@ -22,3 +22,6 @@ Rplots.pdf
 # docs
 /docs/generated/
 /docs/_build/
+
+# Large test fixtures (copied into worktrees, never committed)
+tests/data/

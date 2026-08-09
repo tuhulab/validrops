@@ -6,6 +6,8 @@ library(DropletUtils)
 
 # Load PBMC 4K test dataset
 path <- getTestFile("tenx-2.1.0-pbmc4k/1.0.0/raw.h5", prefix=TRUE)
+dir.create("tests/data/pbmc4k", recursive = TRUE, showWarnings = FALSE)
+stopifnot(file.copy(path, "tests/data/pbmc4k/raw.h5", overwrite = TRUE))
 data <- DropletUtils::read10xCounts(path, type = "HDF5")
 
 # Run full pipeline, capture intermediate results
