@@ -194,6 +194,14 @@ def _fit_once(
     k = psi_init.size
     psi = np.clip(np.sort(np.asarray(psi_init, dtype=np.float64)), lo, hi)
 
+    # Deliberate over-approximation vs R: this checks all k+1 segments, while
+    # R's initial far.psi(ret.id=FALSE) only checks the first k (the same
+    # id.ok[-length(id.ok)] slice _rescale_inadmissible uses below). Checked
+    # against R directly — there's no observable behavioural difference: a
+    # thin *last* segment still errors in R, just one iteration later via
+    # isZero on the first fit instead of this initial stop(). Kept as-is
+    # rather than narrowed to match R's slice exactly, since it fails the
+    # same inputs faster with the same error category.
     if np.any(_segment_counts(x, psi) < _MIN_SEGMENT_N):
         raise SegmentedFitError(
             "starting psi too close together or at the boundary — no admissible configuration "

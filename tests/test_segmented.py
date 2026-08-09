@@ -163,30 +163,26 @@ def test_n_boot_matches_r_bootstrap_result(ref):
     random-restart fallback — just resample, refit from the current best
     start, refit on the full data, keep the lowest RSS). Validated against
     tests/reference_outputs/segmented_boot_reference.csv, generated with
-    R's own ``seg.control(n.boot = 10)`` on the same four cases (standalone
-    snippet, not a full tests/R/generate_reference.R run).
+    R's own ``seg.control(n.boot = 10)`` on the same four cases
+    (tests/R/generate_reference.R's segmented-bootstrap block).
 
-    For the three well-posed cases (one_break, two_breaks, plateau — each
-    has one unambiguous global optimum) this simplification agrees with R's
-    bootstrap result to ~1e-9 relative, and — checked over 20 random_state
-    values per case — that agreement does not depend on the seed at all.
+    Restricted to the three well-posed cases (one_break, two_breaks,
+    plateau — each has one unambiguous global optimum): this simplification
+    agrees with R's bootstrap result to ~1e-9 relative, and — checked over
+    20 random_state values per case — that agreement does not depend on the
+    seed at all, so an exact rtol=1e-6 match at the default random_state is
+    a meaningful assertion here.
 
-    smooth_curve is different, and worth stating plainly: it's an
-    artificial 3-breakpoint approximation of a smooth log curve that has no
-    true breakpoints, so the RSS surface is genuinely multi-modal. Swept
-    over 30 random_state values, this simplified bootstrap lands on R's
-    exact optimum in 18/30 (60%) and a nearby-but-distinct local optimum
-    (~5% relative away, not a wild miss, but not R's answer either) in the
-    rest. random_state=0 (the default) happens to land on R's optimum for
-    this fixture, so this test — at rtol=1e-6 — passes, but that is a
-    property of this seed and this fixture, not a guarantee. If Stage 1 or
-    Stage 2b ever call segmented() with npsi >= 3 on data this ambiguous,
-    this 40% miss rate is directly relevant and should not be assumed away;
-    see task-7-report.md for the full sweep.
+    smooth_curve is deliberately excluded from this loop and covered
+    separately by test_n_boot_smooth_curve_is_bimodal_across_seeds below —
+    it is genuinely bimodal under this simplified restart (measured: only
+    18/30 random seeds reach R's optimum), so pinning it to one seed here
+    would assert a result that's true by luck, not by property, and
+    couldn't catch the very flakiness it's meant to guard against.
     """
     inputs = ref("segmented_inputs.csv")
     boot_ref = ref("segmented_boot_reference.csv")
-    for name in inputs["case"].unique():
+    for name in ("one_break", "two_breaks", "plateau"):
         g = inputs[inputs["case"] == name]
         x = g["x"].to_numpy()
         y = g["y"].to_numpy()
@@ -195,6 +191,53 @@ def test_n_boot_matches_r_bootstrap_result(ref):
         want_psi = np.sort(np.array([terms[f"psi{i + 1}"] for i in range(npsi)]))
         fit = segmented(x, y, npsi=npsi, n_boot=10, random_state=0)
         np.testing.assert_allclose(np.sort(fit.psi), want_psi, rtol=1e-6, err_msg=name)
+
+
+def test_n_boot_smooth_curve_is_bimodal_across_seeds(ref):
+    """smooth_curve is an artificial 3-breakpoint fit to log(x)*3, a smooth
+    curve with no true breakpoints, so the RSS surface is genuinely
+    multi-modal — unlike the other three fixture cases (see
+    test_n_boot_matches_r_bootstrap_result), a single random_state cannot
+    stand in for "the bootstrap path works" here.
+
+    Measured (not chosen) by sweeping random_state 0..29 against
+    tests/reference_outputs/segmented_boot_reference.csv's R-bootstrap psi:
+    18/30 seeds reach R's exact optimum (<1e-3 relative), and the other
+    12/30 land on one specific nearby local optimum, 4.7-6.2% relative away
+    — not scattered garbage, the same alternate basin every time. This test
+    encodes exactly that: a floor on the hit rate well below the measured
+    18/30 (so it doesn't flake on ordinary cross-run RNG variation, e.g. a
+    numpy version change), and a check that every miss still lands in the
+    documented alternate-optimum band rather than somewhere unexpected —
+    which would indicate the search itself broke, not just which basin it
+    found.
+
+    R's fuller seg.lm.fit.boot (evolving start, stagnation kick,
+    random-restart fallback) apparently escapes this second basin more
+    reliably than plain resample-and-refit; this Python port doesn't port
+    that machinery (see the n_boot docstring on segmented()), so this
+    bimodality is an accepted, documented limitation, not a bug to chase.
+    """
+    inputs = ref("segmented_inputs.csv")
+    boot_ref = ref("segmented_boot_reference.csv")
+    g = inputs[inputs["case"] == "smooth_curve"]
+    x = g["x"].to_numpy()
+    y = g["y"].to_numpy()
+    npsi = int(g["npsi"].iloc[0])
+    terms = boot_ref[boot_ref["case"] == "smooth_curve"].set_index("term")["value"]
+    want_psi = np.sort(np.array([terms[f"psi{i + 1}"] for i in range(npsi)]))
+
+    n_seeds = 30
+    n_hits = 0
+    for seed in range(n_seeds):
+        fit = segmented(x, y, npsi=npsi, n_boot=10, random_state=seed)
+        rel = np.max(np.abs((np.sort(fit.psi) - want_psi) / want_psi))
+        if rel < 1e-3:
+            n_hits += 1
+        else:
+            assert 0.01 < rel < 0.10, f"seed {seed}: relative error {rel} outside the documented alternate basin"
+
+    assert n_hits >= 12, f"only {n_hits}/{n_seeds} seeds reached R's optimum (measured baseline: 18/30)"
 
 
 def test_n_boot_restarts_still_recover_the_breakpoint():

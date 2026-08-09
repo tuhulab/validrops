@@ -146,6 +146,33 @@ for (nm in names(seg_cases)) {
 write.csv(do.call(rbind, seg_rows), file.path(OUT, "segmented_reference.csv"), row.names = FALSE)
 write.csv(do.call(rbind, seg_in), file.path(OUT, "segmented_inputs.csv"), row.names = FALSE)
 
+# segmented, bootstrap variant: same four cases (seg_cases, above), but with
+# seg.control(n.boot = 10) — R's own default restart count — instead of
+# n.boot = 0. This validates the Python port's simplified n_boot path (no
+# evolving start / stagnation kick / random-restart fallback) against R's
+# actual seg.lm.fit.boot output; see Task 7's report for the achieved
+# agreement (exact for well-posed cases, seed-dependent for smooth_curve,
+# which has no true breakpoints and a genuinely multi-modal RSS surface).
+# Not meant for a Python-side exact-match comparison in general — R's RNG
+# stream can't be reproduced from Python — only to check where the Python
+# bootstrap's breakpoints land relative to R's.
+boot_rows <- list()
+for (nm in names(seg_cases)) {
+  cs <- seg_cases[[nm]]
+  set.seed(99)
+  fit <- segmented(lm(y ~ x, data = data.frame(x = cs$x, y = cs$y)),
+    npsi = cs$npsi, control = seg.control(n.boot = 10)
+  )
+  psi <- fit$psi[, 2]
+  sl <- slope(fit, digits = 15)$x[, 1]
+  boot_rows[[nm]] <- rbind(
+    data.frame(case = nm, term = paste0("psi", seq_along(psi)), value = psi),
+    data.frame(case = nm, term = paste0("slope", seq_along(sl)), value = sl),
+    data.frame(case = nm, term = "rmse", value = sqrt(mean(fit$residuals^2)))
+  )
+}
+write.csv(do.call(rbind, boot_rows), file.path(OUT, "segmented_boot_reference.csv"), row.names = FALSE)
+
 ## ------------------------------------------------------------------- dataset
 
 sce <- DropletUtils::read10xCounts("tests/data/pbmc4k/raw.h5")
