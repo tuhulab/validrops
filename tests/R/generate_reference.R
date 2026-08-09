@@ -51,6 +51,10 @@ write.csv(
   data.frame(name = names(test_vectors), sn = sapply(test_vectors, Sn)),
   file.path(OUT, "sn_reference.csv"), row.names = FALSE
 )
+sn_in <- do.call(rbind, lapply(names(test_vectors), function(n) {
+  data.frame(name = n, value = test_vectors[[n]])
+}))
+write.csv(sn_in, file.path(OUT, "sn_inputs.csv"), row.names = FALSE)
 
 # rollmean at odd and even k
 set.seed(1)
