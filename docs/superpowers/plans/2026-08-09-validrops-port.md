@@ -30,6 +30,10 @@
   a 1e-7 mismatch against `stage2_metrics.csv`.
 - R quirks listed in the spec are preserved verbatim, each with a comment citing the R line. Do not "fix" them.
 - Run commands with `uv run` (a bare `pytest` resolves to a Homebrew Python outside the project venv).
+- **Imports across packages are absolute**: `from validrops._constants import X`, not
+  `from .._constants import X`. The repo's ruff config selects `TID`, whose
+  `ban-relative-imports` default of `"parents"` rejects parent-relative imports. Sibling
+  imports within a package (`from ._stats import sn`) are fine. Found in Task 5.
 - Commit at the end of every task. Never commit a task with failing tests.
 
 ---
@@ -992,14 +996,16 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'validrops.tl._stats'`
 
 import numpy as np
 
-from .._constants import SN_C_SMALL, SN_CONSTANT
+from validrops._constants import SN_C_SMALL, SN_CONSTANT
 
 
 def _finite_sample_correction(n: int) -> float:
     """Rousseeuw & Croux (1993) finite-sample correction factor c_n."""
     if 2 <= n <= 9:
         return SN_C_SMALL[n - 2]
-    if n % 2 == 0:
+    # robustbase::Sn reads `else if (n %% 2) n/(n - 0.9)`, and n %% 2 is TRUE for ODD n.
+    # Getting this parity backwards costs ~1% on even-length samples.
+    if n % 2:
         return n / (n - 0.9)
     return 1.0
 
@@ -2059,7 +2065,7 @@ import numpy as np
 import scipy.sparse as sp
 from sklearn.neighbors import NearestNeighbors
 
-from .._constants import SNN_K, SNN_PRUNE
+from validrops._constants import SNN_K, SNN_PRUNE
 
 
 def snn_graph(embedding: np.ndarray, k: int = SNN_K, prune: float = SNN_PRUNE) -> sp.csr_matrix:
@@ -2245,7 +2251,7 @@ from importlib.resources import files
 import numpy as np
 import pandas as pd
 
-from .._constants import MITO_CHROMOSOMES
+from validrops._constants import MITO_CHROMOSOMES
 
 _ENSEMBL_PREFIX = re.compile(r"^(ENSG00|ENSMUSG00)")
 
@@ -2512,9 +2518,9 @@ import pandas as pd
 from anndata import AnnData
 from scipy.stats import rankdata
 
-from .._constants import UNS_KEY
-from ..tl._segmented import SegmentedFitError, segmented
-from ..tl._stats import rollmean
+from validrops._constants import UNS_KEY
+from validrops.tl._segmented import SegmentedFitError, segmented
+from validrops.tl._stats import rollmean
 
 logger = logging.getLogger(__name__)
 
@@ -2805,7 +2811,7 @@ import logging
 import numpy as np
 from anndata import AnnData
 
-from .._constants import UNS_KEY
+from validrops._constants import UNS_KEY
 from ._annotation import detect_annotation, gene_sets
 
 logger = logging.getLogger(__name__)
@@ -3085,10 +3091,10 @@ import pandas as pd
 from anndata import AnnData
 from sklearn.mixture import GaussianMixture
 
-from .._constants import MITO_SCAN_INCREMENT, UNS_KEY
-from ..tl._segmented import SegmentedFitError, segmented
-from ..tl._stats import sn
-from ..tl._uik import uik
+from validrops._constants import MITO_SCAN_INCREMENT, UNS_KEY
+from validrops.tl._segmented import SegmentedFitError, segmented
+from validrops.tl._stats import sn
+from validrops.tl._uik import uik
 
 logger = logging.getLogger(__name__)
 
@@ -3443,7 +3449,7 @@ import scipy.sparse as sp
 from anndata import AnnData
 from scipy.sparse.linalg import svds
 
-from .._constants import SHALLOW_RESOLUTION, UNS_KEY
+from validrops._constants import SHALLOW_RESOLUTION, UNS_KEY
 from ._deviance import deviance_feature_selection
 from ._snn import louvain, snn_graph
 from ._wilcox import wilcoxauc
@@ -3790,9 +3796,9 @@ import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-from .._constants import UNS_KEY
-from ..tl._segmented import SegmentedFitError, segmented
-from ..tl._stats import sn
+from validrops._constants import UNS_KEY
+from validrops.tl._segmented import SegmentedFitError, segmented
+from validrops.tl._stats import sn
 
 logger = logging.getLogger(__name__)
 
@@ -4070,8 +4076,8 @@ import logging
 import numpy as np
 from anndata import AnnData
 
-from .._constants import DEAD_LABEL_FRAC, DEAD_SCORE_COEFFICIENTS, UNS_KEY
-from ..tl._uik import uik
+from validrops._constants import DEAD_LABEL_FRAC, DEAD_SCORE_COEFFICIENTS, UNS_KEY
+from validrops.tl._uik import uik
 
 logger = logging.getLogger(__name__)
 
@@ -4578,12 +4584,12 @@ from joblib import Parallel, delayed
 from scipy.sparse.linalg import svds
 from scipy.stats import kendalltau
 
-from .._constants import (
+from validrops._constants import (
     DEAD_CELL_CONSENSUS, DEAD_CELL_RUNS, DEAD_COR_MAX, DEAD_COR_MIN,
     DEAD_EPOCHS, DEAD_FAIL_WEIGHT, DEAD_MAX_LIVE, DEAD_MIN_DEAD,
     DEAD_NFOLDS, DEAD_NPCS, DEAD_NREP,
 )
-from ..tl._ridge import logistic_ridge_1se, roc_best_threshold
+from validrops.tl._ridge import logistic_ridge_1se, roc_best_threshold
 
 logger = logging.getLogger(__name__)
 
@@ -5148,7 +5154,7 @@ import numpy as np
 from anndata import AnnData
 from matplotlib.axes import Axes
 
-from .._constants import UNS_KEY
+from validrops._constants import UNS_KEY
 
 
 def _axes(ax: Axes | None) -> Axes:

@@ -182,7 +182,10 @@ AnnData is cells × genes where R's matrix is genes × cells — every axis is t
 `1.1926 * c_n * lomed_i( himed_j |x_i - x_j| )` where `himed` is the `⌊n/2⌋+1`-th order statistic
 and `lomed` the `⌈n/2⌉`-th. Finite-sample correction `c_n`: for `n` in 2..9, the tabulated
 constants `{0.743, 1.851, 0.954, 1.351, 0.993, 1.198, 1.005, 1.131}` respectively; for `n > 9`,
-`n/(n-0.9)` when `n` is even and `1.0` when odd. Naive O(n²) is acceptable — Stage 2b calls it on
+`n/(n-0.9)` when `n` is **odd** and `1.0` when even. (Verified against `deparse(robustbase::Sn)`,
+which reads `else if (n %% 2) n/(n - 0.9)` — and `n %% 2` is TRUE for odd `n`. An earlier draft of
+this spec had the parity inverted, which costs ~1% on even-length samples.)
+Naive O(n²) is acceptable — Stage 2b calls it on
 ≤ ~10k values. Asserted at `rtol=1e-10`.
 
 **`uik(x, y)` — `inflection::uik`**
