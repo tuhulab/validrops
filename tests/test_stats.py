@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from validrops.tl._stats import rollmean, sn
+from validrops.tl._stats import _finite_sample_correction, rollmean, sn
 
 
 def test_sn_matches_r(ref):
@@ -57,3 +57,24 @@ def test_rollmean_matches_r(ref):
 def test_rollmean_window_larger_than_input():
     with pytest.raises(ValueError, match="window"):
         rollmean(np.arange(3.0), 5)
+
+
+@pytest.mark.parametrize(
+    ("n", "expected"),
+    [
+        (2, 0.743),
+        (9, 1.131),  # tabulated bounds
+        (11, 11 / 10.1),
+        (21, 21 / 20.1),  # odd > 9 -> n / (n - 0.9)
+        (10, 1.0),
+        (20, 1.0),  # even > 9 -> 1.0
+    ],
+)
+def test_finite_sample_correction(n, expected):
+    """Direct unit test on the private correction factor.
+
+    No fixture in ``sn_reference.csv`` before this test exercised the odd-n>9
+    branch (all five original vectors were even-length), so a silently
+    re-inverted parity there would have passed every other test in this file.
+    """
+    assert _finite_sample_correction(n) == pytest.approx(expected)

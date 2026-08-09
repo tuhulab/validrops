@@ -45,7 +45,8 @@ pdf(NULL) # swallow plots
 set.seed(42)
 test_vectors <- list(
   normal = rnorm(100), skewed = rexp(100), heavy_tail = rt(100, df = 3),
-  small = rnorm(20), large = rnorm(5000)
+  small = rnorm(20), large = rnorm(5000),
+  odd_medium = rnorm(21)
 )
 write.csv(
   data.frame(name = names(test_vectors), sn = sapply(test_vectors, Sn)),
