@@ -5,23 +5,24 @@
 # stages (mitochondrial threshold, clustering, dead-cell training) will
 # still differ across R versions; regenerate rather than hand-edit.
 #
-# Stage 4 (label_dead) is deliberately last. valiDrops has a documented
-# soft-label threshold bug (label_dead.R:56-125: `max.quantile` can climb
-# past 1.0 and `quantile(metrics$score, brk)` then errors with 'probs'
-# outside [0,1]) — see project docs. That bug does NOT reproduce with this
-# data/seed: label_dead(train = FALSE) below succeeds outright. The trained
-# call (train = TRUE, the default) instead hits a *different*, real bug:
-# `counts` here is a DelayedMatrix (read10xCounts() on an .h5 file returns
-# one), and label_dead's training path does `norm_transform@x <- ...`
-# (label_dead.R:163), which requires a slot only dgCMatrix has. This is a
-# genuine package/input-compatibility bug, not something we work around
-# here. We do NOT patch the package, pre-convert `counts` to dgCMatrix, or
-# wrap either call in tryCatch to hide the failure — both calls are
-# attempted exactly as valiDrops expects them to be called, and the second
-# one is left to error and halt the script. Because stage 4 runs last,
-# every other fixture (including the score column, which is safe pure
-# arithmetic computed directly from label_dead.R:45-50) is already written
-# to disk by then.
+# Stage 4 (label_dead) is deliberately last, and the earlier stages
+# deliberately do NOT convert the full (unfiltered) `counts` object to
+# dgCMatrix, so that they exercise valiDrops on the object shape
+# read10xCounts() actually hands back for an .h5 file (a DelayedMatrix).
+# Immediately before stage 4, `counts` is coerced to dgCMatrix — see the
+# comment at that assignment for why: label_dead.R:163 does
+# `norm_transform@x <- ...`, which needs a dgCMatrix slot, and
+# valiDrops.R:54 lists dgCMatrix as a supported input class, so this is
+# ordinary supported usage, not a workaround. Even so, valiDrops also has a
+# documented soft-label threshold bug independent of matrix class
+# (label_dead.R:56-125: `max.quantile` can climb past 1.0 and
+# `quantile(metrics$score, brk)` then errors with 'probs' outside [0,1]) —
+# see project docs. We do NOT patch the package or wrap the label_dead()
+# calls in tryCatch to hide a failure from either of these — both calls are
+# attempted for real, and if the trained call errors, it is left to halt
+# the script. Because stage 4 runs last, every other fixture (including the
+# score column, which is safe pure arithmetic computed directly from
+# label_dead.R:45-50) is already written to disk by then.
 
 library(valiDrops)
 library(Matrix)
@@ -263,6 +264,12 @@ write.csv(full, file.path(OUT, "pbmc4k_full_pipeline.csv"), row.names = FALSE)
 
 ## ------------------------------------------------------------------- stage 4
 
+## Stage 4 needs an in-memory sparse matrix: read10xCounts on .h5 returns an
+## HDF5-backed DelayedMatrix, and label_dead.R:163 does norm_transform@x <- ...,
+## which needs a dgCMatrix slot. valiDrops.R:54 accepts dgCMatrix as an input
+## class, so this is ordinary supported usage, not a patch.
+counts <- as(counts, "dgCMatrix")
+
 met <- metrics$metrics
 met$qc.pass <- "fail"
 met[met$barcode %in% valid, "qc.pass"] <- "pass"
@@ -296,9 +303,11 @@ saveRDS(list(counts = counts, met = met),
 message(paste("Stage 4 checkpoint saved to", file.path(tempdir(), "stage4_checkpoint.rds")))
 
 # soft labels only: call with train = FALSE to get the deterministic part.
-# Known to error on this dataset (see file header) — attempted for real,
-# not wrapped in tryCatch. If it succeeds, it overwrites stage4_soft_labels.csv
-# with the full soft_label column and also produces stage4_meta.csv.
+# This has succeeded in prior runs on this dataset/seed (flag = "Succes"),
+# overwriting stage4_soft_labels.csv with the full soft_label column and
+# producing stage4_meta.csv. Attempted for real either way, not wrapped in
+# tryCatch — if this ever fails, its error is left to halt the script rather
+# than being papered over.
 set.seed(42)
 soft <- valiDrops::label_dead(
   counts = counts, metrics = met,

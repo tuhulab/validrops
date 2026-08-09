@@ -43,6 +43,7 @@ EXPECTED = {
     "stage3_barcodes.csv": ["barcode"],
     "stage4_soft_labels.csv": ["barcode", "score", "soft_label"],
     "stage4_meta.csv": ["key", "value"],
+    "stage4_final.csv": ["barcode", "label"],
     "pbmc4k_full_pipeline.csv": ["barcode", "qc.pass"],
     "uik_inputs.csv": ["case", "x", "y"],
     "segmented_inputs.csv": ["case", "x", "y", "npsi"],
