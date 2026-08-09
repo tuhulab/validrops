@@ -1,38 +1,340 @@
-# In R — run once to generate reference data
-pak::pkg_install(c("madsen-lab/valiDrops", "immunogenomics/presto", "DropletTestFiles", "DropletUtils"))
+# Regenerates every fixture in tests/reference_outputs/.
+# Run from the repository root:  Rscript tests/R/generate_reference.R
+#
+# Everything is seeded so the fixtures are reproducible. The stochastic
+# stages (mitochondrial threshold, clustering, dead-cell training) will
+# still differ across R versions; regenerate rather than hand-edit.
+#
+# Stage 4 (label_dead) is deliberately last. valiDrops has a documented
+# soft-label threshold bug (label_dead.R:56-125: `max.quantile` can climb
+# past 1.0 and `quantile(metrics$score, brk)` then errors with 'probs'
+# outside [0,1]) — see project docs. That bug does NOT reproduce with this
+# data/seed: label_dead(train = FALSE) below succeeds outright. The trained
+# call (train = TRUE, the default) instead hits a *different*, real bug:
+# `counts` here is a DelayedMatrix (read10xCounts() on an .h5 file returns
+# one), and label_dead's training path does `norm_transform@x <- ...`
+# (label_dead.R:163), which requires a slot only dgCMatrix has. This is a
+# genuine package/input-compatibility bug, not something we work around
+# here. We do NOT patch the package, pre-convert `counts` to dgCMatrix, or
+# wrap either call in tryCatch to hide the failure — both calls are
+# attempted exactly as valiDrops expects them to be called, and the second
+# one is left to error and halt the script. Because stage 4 runs last,
+# every other fixture (including the score column, which is safe pure
+# arithmetic computed directly from label_dead.R:45-50) is already written
+# to disk by then.
+
 library(valiDrops)
-library(DropletTestFiles)
+library(Matrix)
 library(DropletUtils)
-
-# Load PBMC 4K test dataset
-path <- getTestFile("tenx-2.1.0-pbmc4k/1.0.0/raw.h5", prefix=TRUE)
-dir.create("tests/data/pbmc4k", recursive = TRUE, showWarnings = FALSE)
-stopifnot(file.copy(path, "tests/data/pbmc4k/raw.h5", overwrite = TRUE))
-data <- DropletUtils::read10xCounts(path, type = "HDF5")
-
-# Run full pipeline, capture intermediate results
-valid <- valiDrops(data)
-dir.create("tests/reference_outputs", recursive = TRUE, showWarnings = FALSE)
-write.csv(valid, "tests/reference_outputs/pbmc4k_full_pipeline.csv")
-
-# Also run with dead cell labeling
-# Encounters an error when predicting dead cells
-# Error in quantile.default(metrics$score, brk) : 'probs' outside [0,1]
-
-
-# valid_dead <- valiDrops(data, label_dead = TRUE)
-# write.csv(valid_dead, "tests/reference_outputs/pbmc4k_with_dead_labels.csv")
-
-# Generate Sn estimator reference values
 library(robustbase)
+library(inflection)
+library(zoo)
+library(segmented)
+library(scry)
+library(presto)
+
+set.seed(42)
+OUT <- "tests/reference_outputs"
+dir.create(OUT, recursive = TRUE, showWarnings = FALSE)
+pdf(NULL) # swallow plots
+
+## ---------------------------------------------------------------- primitives
+
+# Sn
 set.seed(42)
 test_vectors <- list(
-  normal = rnorm(100),
-  skewed = rexp(100),
-  heavy_tail = rt(100, df=3),
-  small = rnorm(20),
-  large = rnorm(5000)
+  normal = rnorm(100), skewed = rexp(100), heavy_tail = rt(100, df = 3),
+  small = rnorm(20), large = rnorm(5000)
 )
-sn_values <- sapply(test_vectors, Sn)
-write.csv(data.frame(name=names(sn_values), sn=sn_values),
-          "tests/reference_outputs/sn_reference.csv")
+write.csv(
+  data.frame(name = names(test_vectors), sn = sapply(test_vectors, Sn)),
+  file.path(OUT, "sn_reference.csv"), row.names = FALSE
+)
+
+# rollmean at odd and even k
+set.seed(1)
+rm_x <- cumsum(rnorm(50))
+rm_rows <- list()
+for (k in c(3, 4, 7, 8)) {
+  v <- as.numeric(zoo::rollmean(rm_x, k = k, align = "center"))
+  rm_rows[[length(rm_rows) + 1]] <- data.frame(
+    case = paste0("k", k), index = seq_along(v), value = v
+  )
+}
+rm_rows[[length(rm_rows) + 1]] <- data.frame(case = "input", index = seq_along(rm_x), value = rm_x)
+write.csv(do.call(rbind, rm_rows), file.path(OUT, "rollmean_reference.csv"), row.names = FALSE)
+
+# uik
+uik_cases <- list(
+  convex_decreasing = list(x = 1:100, y = 100 / (1:100)),
+  concave_increasing = list(x = 1:100, y = log(1:100)),
+  sigmoid = list(x = seq(-5, 5, length.out = 100), y = 1 / (1 + exp(-seq(-5, 5, length.out = 100)))),
+  step = list(x = 1:100, y = c(rep(1, 40), seq(1, 10, length.out = 20), rep(10, 40))),
+  noisy_elbow = list(x = 1:200, y = pmax(0, 50 - 0.5 * (1:200)) + 0.02 * (1:200))
+)
+uik_rows <- data.frame(
+  case = names(uik_cases),
+  knee = sapply(uik_cases, function(c) uik(c$x, c$y))
+)
+write.csv(uik_rows, file.path(OUT, "uik_reference.csv"), row.names = FALSE)
+# also persist the inputs so Python tests use identical data
+uik_in <- do.call(rbind, lapply(names(uik_cases), function(n) {
+  data.frame(case = n, x = uik_cases[[n]]$x, y = uik_cases[[n]]$y)
+}))
+write.csv(uik_in, file.path(OUT, "uik_inputs.csv"), row.names = FALSE)
+
+# segmented
+seg_cases <- list()
+set.seed(7)
+x1 <- seq(0, 10, length.out = 200)
+seg_cases$one_break <- list(x = x1, y = ifelse(x1 < 4, 2 * x1, 8 + 0.5 * (x1 - 4)) + rnorm(200, sd = 0.1), npsi = 1)
+x2 <- seq(0, 20, length.out = 400)
+y2 <- ifelse(x2 < 5, x2, ifelse(x2 < 12, 5 + 3 * (x2 - 5), 26 - 0.5 * (x2 - 12))) + rnorm(400, sd = 0.2)
+seg_cases$two_breaks <- list(x = x2, y = y2, npsi = 2)
+x3 <- seq(1, 50, length.out = 300)
+y3 <- log(x3) * 3 + rnorm(300, sd = 0.15)
+seg_cases$smooth_curve <- list(x = x3, y = y3, npsi = 3)
+x4 <- seq(0, 1, length.out = 150)
+y4 <- ifelse(x4 < 0.3, 1, ifelse(x4 < 0.7, 1 + 5 * (x4 - 0.3), 3)) + rnorm(150, sd = 0.05)
+seg_cases$plateau <- list(x = x4, y = y4, npsi = 2)
+
+seg_rows <- list()
+seg_in <- list()
+for (nm in names(seg_cases)) {
+  cs <- seg_cases[[nm]]
+  set.seed(99)
+  # n.boot = 0 disables bootstrap restart, making the fit deterministic given
+  # the default quantile-spaced starting values. Without this the fixture
+  # depends on R's RNG stream, which the Python port cannot reproduce.
+  fit <- segmented(lm(y ~ x, data = data.frame(x = cs$x, y = cs$y)),
+    npsi = cs$npsi, control = seg.control(n.boot = 0)
+  )
+  psi <- fit$psi[, 2] # column 2 is "Est."
+  psi0 <- fit$psi[, 1] # column 1 is "Initial" — Python starts from these
+  sl <- slope(fit)$x[, 1]
+  seg_rows[[nm]] <- rbind(
+    data.frame(case = nm, term = paste0("psi_init", seq_along(psi0)), value = psi0),
+    data.frame(case = nm, term = paste0("psi", seq_along(psi)), value = psi),
+    data.frame(case = nm, term = paste0("slope", seq_along(sl)), value = sl),
+    data.frame(case = nm, term = "rmse", value = sqrt(mean(fit$residuals^2)))
+  )
+  seg_in[[nm]] <- data.frame(case = nm, x = cs$x, y = cs$y, npsi = cs$npsi)
+}
+write.csv(do.call(rbind, seg_rows), file.path(OUT, "segmented_reference.csv"), row.names = FALSE)
+write.csv(do.call(rbind, seg_in), file.path(OUT, "segmented_inputs.csv"), row.names = FALSE)
+
+## ------------------------------------------------------------------- dataset
+
+sce <- DropletUtils::read10xCounts("tests/data/pbmc4k/raw.h5")
+counts <- SingleCellExperiment::counts(sce)
+rownames(counts) <- rowData(sce)$Symbol
+colnames(counts) <- paste("cell", seq_len(ncol(counts)), sep = "_")
+
+## ------------------------------------------------------------------- stage 1
+
+set.seed(42)
+threshold <- valiDrops::rank_barcodes(counts, plot = FALSE)
+rank.pass <- rownames(threshold$ranks[threshold$ranks$counts >= threshold$lower.threshold, ])
+ranks <- threshold$ranks
+ranks$barcode <- rownames(ranks)
+write.csv(ranks[ranks$barcode %in% rank.pass, c("barcode", "counts", "rank")],
+  file.path(OUT, "stage1_threshold.csv"),
+  row.names = FALSE
+)
+write.csv(data.frame(
+  key = c("lower_threshold", "n_pass", "n_input"),
+  value = c(threshold$lower.threshold, length(rank.pass), ncol(counts))
+),
+file.path(OUT, "stage1_meta.csv"),
+row.names = FALSE
+)
+
+counts.subset <- counts[, colnames(counts) %in% rank.pass]
+
+## ------------------------------------------------------------------ stage 2a
+
+set.seed(42)
+metrics <- valiDrops::quality_metrics(counts.subset, verbose = TRUE)
+write.csv(metrics$metrics, file.path(OUT, "stage2_metrics.csv"), row.names = FALSE)
+
+genesets <- rbind(
+  data.frame(gene = metrics$mitochondrial, set = "mitochondrial"),
+  data.frame(gene = metrics$ribosomal, set = "ribosomal"),
+  data.frame(gene = metrics$protein_coding, set = "protein_coding")
+)
+write.csv(genesets, file.path(OUT, "annotation_genesets.csv"), row.names = FALSE)
+# detection result: recompute the winning (dataset, column) the same way R does
+write.csv(data.frame(
+  species = "human", column = "Symbol",
+  n_mapped = sum(rownames(counts.subset) %in%
+    as.data.frame(valiDrops:::annotation[[1]])$Symbol)
+),
+file.path(OUT, "annotation_detection.csv"),
+row.names = FALSE
+)
+
+## ------------------------------------------------------------------ stage 2b
+
+set.seed(42)
+qc.pass <- valiDrops::quality_filter(metrics$metrics, plot = FALSE)
+bc <- metrics$metrics$barcode
+write.csv(data.frame(
+  barcode = bc,
+  pass_mito = bc %in% qc.pass$pass.mitochondrial_filter,
+  pass_distance = bc %in% qc.pass$pass.distance_filter,
+  pass_coding = bc %in% qc.pass$pass.coding_filter,
+  final = bc %in% qc.pass$final
+), file.path(OUT, "stage2_filters.csv"), row.names = FALSE)
+write.csv(data.frame(
+  key = c("mitochondrial_threshold", "n_final"),
+  value = c(qc.pass$mitochondrial.threshold, length(qc.pass$final))
+),
+file.path(OUT, "stage2_meta.csv"),
+row.names = FALSE
+)
+
+## ------------------------------------------------------------------ stage 3a
+
+counts.filtered <- counts.subset[
+  rownames(counts.subset) %in% metrics$protein_coding,
+  colnames(counts.subset) %in% qc.pass$final
+]
+counts.filtered <- as(counts.filtered, "dgCMatrix")
+set.seed(42)
+expr <- valiDrops::expression_metrics(counts.filtered,
+  mito = metrics$mitochondrial,
+  ribo = metrics$ribosomal
+)
+write.csv(expr$stats, file.path(OUT, "stage3_stats.csv"), row.names = FALSE)
+
+# clusters: expression_metrics only returns the deep assignment
+deep <- data.frame(barcode = rownames(expr$clusters), deep = expr$clusters[, 1])
+write.csv(deep, file.path(OUT, "stage3_clusters_deep.csv"), row.names = FALSE)
+
+## ------------------------------------------------------------------ stage 3b
+
+set.seed(42)
+valid <- valiDrops::expression_filter(
+  stats = expr$stats, clusters = expr$clusters,
+  mito = 3, ribo = 3, plot = FALSE
+)
+write.csv(data.frame(barcode = valid), file.path(OUT, "stage3_barcodes.csv"), row.names = FALSE)
+
+## ---------------------------------------------------------- deviance, wilcox
+
+nonzero <- counts.filtered[Matrix::rowSums(counts.filtered) > 0, ]
+dev <- scry::devianceFeatureSelection(nonzero)
+write.csv(data.frame(gene = names(dev), deviance = as.numeric(dev)),
+  file.path(OUT, "deviance_reference.csv"),
+  row.names = FALSE
+)
+
+sf <- 10000 / Matrix::colSums(nonzero)
+norm_transform <- Matrix::t(Matrix::t(nonzero) * sf)
+norm_transform@x <- log1p(norm_transform@x)
+target <- deep$barcode[deep$deep == deep$deep[1]]
+y <- rep("rest", ncol(norm_transform))
+y[colnames(norm_transform) %in% target] <- "target"
+feats <- rownames(norm_transform)[1:500]
+wa <- presto::wilcoxauc(X = norm_transform[feats, ], y = y, groups_use = c("target", "rest"))
+wa <- wa[wa$group == "target", ]
+write.csv(data.frame(
+  feature = wa$feature, auc = wa$auc, pval = wa$pval,
+  pct_in = wa$pct_in, pct_out = wa$pct_out
+),
+file.path(OUT, "wilcoxauc_reference.csv"),
+row.names = FALSE
+)
+write.csv(data.frame(barcode = colnames(norm_transform), group = y),
+  file.path(OUT, "wilcoxauc_groups.csv"),
+  row.names = FALSE
+)
+
+## -------------------------------------------------------------- end-to-end
+##
+## This runs before stage 4 (deliberately) so that pbmc4k_full_pipeline.csv
+## is on disk regardless of whether the stage-4 label_dead() bug below
+## halts the script. label_dead = FALSE by default, so this call does not
+## touch label_dead() at all.
+
+set.seed(42)
+full <- valiDrops(counts, plot = FALSE)
+write.csv(full, file.path(OUT, "pbmc4k_full_pipeline.csv"), row.names = FALSE)
+
+## ------------------------------------------------------------------- stage 4
+
+met <- metrics$metrics
+met$qc.pass <- "fail"
+met[met$barcode %in% valid, "qc.pass"] <- "pass"
+
+# The dead-cell score (label_dead.R:45-50) is pure arithmetic on `met` and
+# does not touch the buggy threshold-search loop below. Compute it directly
+# so we have a trustworthy `score` column even if label_dead() itself
+# crashes on this dataset. `soft_label` is intentionally omitted: it is only
+# known once the (buggy) threshold search below picks a cutoff.
+score_metrics <- met
+score_metrics$logUMIs <- scale(score_metrics$logUMIs, scale = FALSE)
+score_metrics$logFeatures <- scale(score_metrics$logFeatures, scale = FALSE)
+score_metrics$ribosomal_fraction <- asin(sqrt(score_metrics$ribosomal_fraction)) / (pi / 2)
+score_metrics$coding_fraction <- asin(sqrt(score_metrics$coding_fraction)) / (pi / 2)
+score_metrics$mitochondrial_fraction <- asin(sqrt(score_metrics$mitochondrial_fraction)) / (pi / 2)
+score_metrics$score <- score_metrics$logUMIs * -11.82 +
+  score_metrics$logFeatures * 2.08 +
+  score_metrics$ribosomal_fraction * 158.98 +
+  score_metrics$logFeatures * score_metrics$coding_fraction * 18.87 +
+  score_metrics$ribosomal_fraction * score_metrics$coding_fraction * -125.9
+write.csv(data.frame(barcode = score_metrics$barcode, score = score_metrics$score),
+  file.path(OUT, "stage4_soft_labels.csv"),
+  row.names = FALSE
+)
+
+# Checkpoint for debugging the label_dead() crash without recomputing the
+# whole pipeline. Not a fixture: written outside tests/reference_outputs.
+saveRDS(list(counts = counts, met = met),
+  file.path(tempdir(), "stage4_checkpoint.rds")
+)
+message(paste("Stage 4 checkpoint saved to", file.path(tempdir(), "stage4_checkpoint.rds")))
+
+# soft labels only: call with train = FALSE to get the deterministic part.
+# Known to error on this dataset (see file header) — attempted for real,
+# not wrapped in tryCatch. If it succeeds, it overwrites stage4_soft_labels.csv
+# with the full soft_label column and also produces stage4_meta.csv.
+set.seed(42)
+soft <- valiDrops::label_dead(
+  counts = counts, metrics = met,
+  qc.labels = setNames(as.character(met$qc.pass), met$barcode),
+  train = FALSE, plot = FALSE
+)
+write.csv(data.frame(
+  barcode = soft$metrics$barcode,
+  score = soft$metrics$score,
+  soft_label = as.character(soft$metrics$label)
+),
+file.path(OUT, "stage4_soft_labels.csv"),
+row.names = FALSE
+)
+write.csv(data.frame(
+  key = c("flag", "n_dead"),
+  value = c(soft$flag, sum(soft$metrics$label == "dead"))
+),
+file.path(OUT, "stage4_meta.csv"),
+row.names = FALSE
+)
+
+# full trained labels
+set.seed(42)
+trained <- valiDrops::label_dead(
+  counts = counts, metrics = met,
+  qc.labels = setNames(as.character(met$qc.pass), met$barcode),
+  plot = FALSE
+)
+write.csv(data.frame(
+  barcode = trained$metrics$barcode,
+  label = as.character(trained$metrics$label)
+),
+file.path(OUT, "stage4_final.csv"),
+row.names = FALSE
+)
+
+dev.off()
+cat("done\n")
