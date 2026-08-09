@@ -112,16 +112,29 @@ seg_rows <- list()
 seg_in <- list()
 for (nm in names(seg_cases)) {
   cs <- seg_cases[[nm]]
+  K <- cs$npsi
+  # segmented.lm always overwrites fit$psi[, "Initial"] with NA before
+  # returning (see segmented.lm source, the line `objF$psi[, "Initial"] <-
+  # NA`), so the starting values can't be read off the fitted object. They
+  # have to be recomputed. With seg.control()'s default quant = FALSE, the
+  # default start for K breakpoints is K equally spaced points across the
+  # *range* of x (not quantiles of its distribution):
+  #   psiE = min(x) + diff(range(x)) * (1:K) / (K + 1)
+  # This is exactly the formula segmented.lm evaluates internally before
+  # fitting, so it reproduces R's actual starting values deterministically.
+  psi0 <- min(cs$x) + diff(range(cs$x)) * (1:K) / (K + 1)
   set.seed(99)
   # n.boot = 0 disables bootstrap restart, making the fit deterministic given
-  # the default quantile-spaced starting values. Without this the fixture
-  # depends on R's RNG stream, which the Python port cannot reproduce.
+  # the default starting values above. Without this the fixture depends on
+  # R's RNG stream, which the Python port cannot reproduce.
   fit <- segmented(lm(y ~ x, data = data.frame(x = cs$x, y = cs$y)),
     npsi = cs$npsi, control = seg.control(n.boot = 0)
   )
   psi <- fit$psi[, 2] # column 2 is "Est."
-  psi0 <- fit$psi[, 1] # column 1 is "Initial" — Python starts from these
-  sl <- slope(fit)$x[, 1]
+  # slope()'s default digits = max(4, getOption("digits") - 2) = 5 rounds the
+  # Est. column to 5 significant figures via signif() before returning it;
+  # request full precision explicitly so the fixture isn't display-rounded.
+  sl <- slope(fit, digits = 15)$x[, 1]
   seg_rows[[nm]] <- rbind(
     data.frame(case = nm, term = paste0("psi_init", seq_along(psi0)), value = psi0),
     data.frame(case = nm, term = paste0("psi", seq_along(psi)), value = psi),
