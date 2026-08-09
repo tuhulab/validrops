@@ -20,6 +20,14 @@
 - Every `log()` in R is **natural log**. Never `log10` unless the R source literally says `log10`.
 - R's `rank()` defaults to `ties.method="average"` → use `scipy.stats.rankdata(x)`. R's `quantile()` defaults to type 7 → `np.quantile(..., method="linear")`. R's `var()` uses `n-1` → `ddof=1`.
 - AnnData is **cells × genes**; R's matrix is **genes × cells**. Every axis is transposed.
+- **Accumulate every count summation in float64.** `scanpy.read_10x_h5` returns float32. The
+  individual counts are exact (integers below 2^24), but summing ~33k of them in float32
+  accumulates ~1e-7 relative error, where R — which reads doubles — does not. Always write
+  `X.sum(axis=..., dtype=np.float64)`, never a bare `X.sum(axis=...)`. Do **not** fix this by
+  casting the matrix to float64 (it doubles memory for no benefit) or by loosening a tolerance.
+  This binds `quality_metrics` (Task 13), `expression_metrics` (Task 15), `label_dead` (Task 18),
+  and every reference test that recomputes a total. Discovered in Task 4, where it showed up as
+  a 1e-7 mismatch against `stage2_metrics.csv`.
 - R quirks listed in the spec are preserved verbatim, each with a comment citing the R line. Do not "fix" them.
 - Run commands with `uv run` (a bare `pytest` resolves to a Homebrew Python outside the project venv).
 - Commit at the end of every task. Never commit a task with failing tests.
