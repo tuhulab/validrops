@@ -6,9 +6,9 @@ to different estimates on the same data.
 
 This is a faithful port of ``segmented:::seg.lm.fit``, not the textbook
 Muggeo (2003) description of a plain, undamped Newton step. Reading the R
-source (there is no vignette for this part) shows three things a naive
-reimplementation misses, all needed to reproduce R's numbers to float64
-precision:
+source (there is no vignette for this part) shows several things a naive
+reimplementation misses, all needed to reproduce R's numbers and R's
+admissibility behaviour:
 
 1. The raw update ``psi + gamma/beta`` is only a *direction*. R scales it by
    ``h = 1.25`` (``seg.control(h=)``) and then does a bounded 1-D line search
@@ -21,6 +21,16 @@ precision:
 3. Candidate breakpoints are clipped into ``[quantile(x, alpha), quantile(x,
    1-alpha)]`` at every iteration (R's ``adj.psi``), not just checked at the
    end.
+4. A mid-iteration breakpoint whose neighbouring segment loses too many
+   points is *not* a failure in R: it's nudged back by a multiplicative
+   rescale (``far.psi``'s ``ifelse(diff(nj) > 0, 1/fc, fc)``) and the loop
+   continues. Only two things are genuinely unrecoverable in R: the
+   *starting* breakpoints being inadmissible (an unconditional ``stop()``,
+   no rescue), and a beta or gamma coefficient collapsing to an *exact*
+   zero (R's ``isZero`` is ``identical(.x, 0)``, bitwise equality — not an
+   epsilon test) under R's default ``fix.npsi = TRUE``. Exhausting
+   ``max_iter`` is not a failure either; R sets ``id.warn`` and returns the
+   fit as-is.
 
 Matching this algorithm (rather than a plain undamped Newton step) brings
 breakpoints and RMSE within ~1e-9 relative of R across the reference fixtures
@@ -36,6 +46,7 @@ perturbation is hugely leveraged. See task-7-report.md for the full
 diagnosis.
 """
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -44,10 +55,20 @@ from scipy.optimize import minimize_scalar
 # seg.control() defaults that R does not expose as segmented() arguments either.
 _STEP_SCALE = 1.25  # seg.control(h=)
 _MIN_SEGMENT_N = 2  # seg.control(min.n=)
+_RESCALE_FACTOR = 0.95  # seg.control(fc=)
 
 
 class SegmentedFitError(RuntimeError):
-    """Raised when no segmented model converges for the given data."""
+    """Raised when no admissible segmented fit exists for the given data.
+
+    Reserved for what R itself treats as unrecoverable: the starting
+    breakpoints are inadmissible (a segment has fewer than
+    ``seg.control(min.n=2)`` points even before iterating), or a beta/gamma
+    coefficient collapses to an exact zero mid-iteration. A breakpoint
+    drifting into a small segment *during* iteration, or exhausting
+    ``max_iter``, are not failures — R rescues the former by rescaling and
+    returns the latter as a fit with ``converged=False``.
+    """
 
 
 @dataclass(frozen=True)
@@ -62,6 +83,9 @@ class SegmentedFit:
     residuals: np.ndarray
     rmse: float
     converged: bool
+    """``False`` when the fit is only being returned because ``max_iter`` was
+    exhausted before the RSS-relative-change criterion was met (R's
+    ``id.warn``) — the breakpoints are usable but not fully settled."""
 
 
 def _default_psi_init(x: np.ndarray, npsi: int) -> np.ndarray:
@@ -87,6 +111,34 @@ def _segment_counts(x: np.ndarray, psi: np.ndarray) -> np.ndarray:
     """Number of points strictly within each of the ``len(psi) + 1`` segments."""
     edges = np.concatenate(([-np.inf], np.sort(psi), [np.inf]))
     return np.histogram(x, bins=edges)[0]
+
+
+def _rescale_inadmissible(psi: np.ndarray, seg_counts: np.ndarray, lo: float, hi: float, fc: float) -> np.ndarray:
+    """R's ``far.psi`` rescue for a mid-iteration breakpoint in a thin segment.
+
+    A breakpoint ``psi[j]`` is flagged when the segment to its *left* (the
+    ``j``-th of the ``k+1`` segments) has fewer than ``min.n`` points — R's
+    ``id.far.ok <- id.ok[-length(id.ok)]``, which keeps all but the last of
+    the ``k+1`` per-segment flags. Flagged breakpoints are rescaled — not
+    rejected — by ``1/fc`` when the segment to the right is more populated
+    than the one to the left (push right, toward where the points are) or
+    ``fc`` otherwise (push left): ``ff <- ifelse(diff(nj) > 0, 1/fc, fc)``.
+    Also folds in R's (separately computed, but factor-blind) bounds check —
+    ``id.psi.ok <- id.psi.in & id.psi.far`` — since after a previous
+    unclipped rescale, psi can legitimately sit outside ``[lo, hi]`` here.
+
+    Deliberately **not** re-clipped to ``[lo, hi]`` afterwards: R doesn't
+    either (``seg.lm.fit`` only calls ``adj.psi`` right after the raw Newton
+    step and right after the line-search blend); the next iteration's clip
+    handles it.
+    """
+    far_ok = seg_counts[:-1] >= _MIN_SEGMENT_N  # length k: left-segment population per breakpoint
+    in_ok = (psi >= lo) & (psi <= hi)
+    if np.all(far_ok & in_ok):
+        return psi
+    diff_nj = np.diff(seg_counts)  # length k
+    factor = np.where(diff_nj > 0, 1.0 / fc, fc)
+    return psi * np.where(far_ok, 1.0, factor)
 
 
 def _rss_no_gamma(x: np.ndarray, y: np.ndarray, psi: np.ndarray) -> float:
@@ -124,18 +176,29 @@ def _fit_once(
 ) -> tuple[np.ndarray, bool]:
     """Run R's damped-Newton-with-line-search iteration from ``psi_init``.
 
-    Returns ``(psi, converged)``. ``converged`` is only ``True`` when the
-    RSS-relative-change criterion was satisfied on an admissible fit; a
-    degenerate direction (a beta or gamma coefficient collapsing to ~0, per
-    R's ``isZero`` check under ``fix.npsi = TRUE``) or a psi whose segments
-    lose the minimum point count is reported as non-convergence rather than
-    silently returned, so callers can retry with a different start/alpha.
+    Returns ``(psi, converged)``, where ``converged`` is only ``False`` when
+    the loop exhausted ``max_iter`` before the RSS-relative-change criterion
+    was met — R still returns that fit (with a warning), and so do we; the
+    caller decides whether to keep it or try another start.
+
+    Raises
+    ------
+    SegmentedFitError
+        Only for the two configurations R itself cannot rescue: the starting
+        breakpoints (after clipping to ``[lo, hi]``) leave a segment with
+        fewer than ``min.n`` points, or a beta/gamma coefficient is exactly
+        zero mid-iteration. Everything else — a breakpoint drifting into a
+        thin segment — is nudged back via ``_rescale_inadmissible`` and the
+        loop continues, matching R under its default ``fix.npsi = TRUE``.
     """
     k = psi_init.size
     psi = np.clip(np.sort(np.asarray(psi_init, dtype=np.float64)), lo, hi)
 
     if np.any(_segment_counts(x, psi) < _MIN_SEGMENT_N):
-        return psi, False
+        raise SegmentedFitError(
+            "starting psi too close together or at the boundary — no admissible configuration "
+            "(R: 'psi starting values too close each other or at the boundaries')"
+        )
 
     l0 = _rss_no_gamma(x, y, psi)
     epsilon = 10.0
@@ -147,11 +210,17 @@ def _fit_once(
         beta = coef[2 : 2 + k]
         gamma = coef[2 + k :]
 
-        if np.any(np.abs(beta) < 1e-12) or np.any(np.abs(gamma) < 1e-12):
-            return psi, False
+        # R's isZero is `identical(.x, 0)` — exact bitwise equality, not an
+        # epsilon test — and under fix.npsi=TRUE (R's default) this is a
+        # hard stop, not something an epsilon threshold or rescue handles.
+        if np.any(beta == 0.0) or np.any(gamma == 0.0):
+            raise SegmentedFitError(
+                "breakpoint estimate collapsed to an exact zero coefficient "
+                "(R: 'breakpoint estimate too close or at the boundary causing NA estimates')"
+            )
 
         psi_old = psi
-        # R: psi <- psi.old + h * gamma.c / beta.c; psi <- adj.psi(psi, limZ)
+        # R: psi <- psi.old + h * gamma.c / beta.c; psi <- adj.psi(psi, limZ); sort
         psi_dir = np.clip(np.sort(psi_old + _STEP_SCALE * gamma / beta), lo, hi)
 
         def rss_along(step: float, _psi_dir: np.ndarray = psi_dir, _psi_old: np.ndarray = psi_old) -> float:
@@ -166,8 +235,9 @@ def _fit_once(
         epsilon = (l0 - l1) / (abs(l0) + 0.1)
         l0 = l1
 
-        if np.any(_segment_counts(x, psi) < _MIN_SEGMENT_N):
-            return psi, False
+        # Rescue, not reject: R applies this unconditionally under fix.npsi=TRUE.
+        psi = _rescale_inadmissible(psi, _segment_counts(x, psi), lo, hi, _RESCALE_FACTOR)
+
         if it >= max_iter:
             return np.sort(psi), False
 
@@ -203,7 +273,7 @@ def segmented(
     *,
     npsi: int | None = None,
     psi_init: np.ndarray | None = None,
-    alpha: float = 0.0,
+    alpha: float | None = None,
     max_iter: int = 30,
     tol: float = 1e-8,
     n_boot: int = 0,
@@ -221,7 +291,11 @@ def segmented(
         Explicit starting values for the breakpoints.
     alpha
         Breakpoints are constrained to ``[quantile(x, alpha), quantile(x, 1-alpha)]``,
-        matching ``segmented::seg.control(alpha=)``.
+        matching ``segmented::seg.control(alpha=)``. ``None`` (the default) resolves to
+        R's own internal default, ``max(0.05, 1/len(y))`` — ``segmented.lm``'s
+        ``if (is.null(alpha)) alpha <- max(0.05, 1/length(y))``. Callers that relied on
+        R's implicit default (i.e. that never passed ``alpha=`` themselves) need this
+        primitive to resolve it, not the call site. Pass ``0.0`` explicitly for no trim.
     max_iter
         Maximum Muggeo iterations per start.
     tol
@@ -233,7 +307,10 @@ def segmented(
     n_boot
         Bootstrap restarts, as in ``seg.control(n.boot=)``. Each restart refits
         on a resampled dataset and uses the result as a new starting value; the
-        lowest-RSS solution wins. Set to 0 for a deterministic fit.
+        lowest-RSS solution wins. Set to 0 for a deterministic fit. This is a
+        simplification of R's ``seg.lm.fit.boot`` (no evolving start, stagnation
+        kick, or random-restart fallback); see task-7-report.md for the achieved
+        agreement with R's bootstrap output.
     random_state
         Seed for the bootstrap restarts.
 
@@ -244,7 +321,10 @@ def segmented(
     Raises
     ------
     SegmentedFitError
-        When no start converges to an admissible set of breakpoints.
+        When no start reaches an admissible set of breakpoints at all — see
+        ``_fit_once`` for exactly which configurations that covers. A fit
+        that merely exhausts ``max_iter`` is still returned, with
+        ``converged=False`` and a warning, matching R.
     """
     x = np.asarray(x, dtype=np.float64).ravel()
     y = np.asarray(y, dtype=np.float64).ravel()
@@ -257,35 +337,44 @@ def segmented(
         psi_init = _default_psi_init(x, int(npsi))
     psi_init = np.asarray(psi_init, dtype=np.float64).ravel()
 
+    if alpha is None:
+        alpha = max(0.05, 1.0 / y.size)
     lo = float(np.quantile(x, alpha)) if alpha > 0 else float(x.min())
     hi = float(np.quantile(x, 1.0 - alpha)) if alpha > 0 else float(x.max())
 
-    best: tuple[float, np.ndarray] | None = None
-    psi, converged = _fit_once(x, y, psi_init, lo, hi, max_iter, tol)
-    if converged:
-        best = (_rss_no_gamma(x, y, psi), psi)
+    best: tuple[float, np.ndarray, bool] | None = None
+    try:
+        psi, converged = _fit_once(x, y, psi_init, lo, hi, max_iter, tol)
+        best = (_rss_no_gamma(x, y, psi), psi, converged)
+    except SegmentedFitError:
+        pass
 
     if n_boot > 0:
         rng = np.random.default_rng(random_state)
-        start = psi if converged else psi_init
+        start = best[1] if best is not None else psi_init
         for _ in range(n_boot):
             idx = rng.integers(0, x.size, size=x.size)
-            boot_psi, boot_ok = _fit_once(x[idx], y[idx], start, lo, hi, max_iter, tol)
-            if not boot_ok:
+            try:
+                boot_psi, _ = _fit_once(x[idx], y[idx], start, lo, hi, max_iter, tol)
+            except SegmentedFitError:
                 continue
-            cand_psi, cand_ok = _fit_once(x, y, boot_psi, lo, hi, max_iter, tol)
-            if not cand_ok:
+            try:
+                cand_psi, cand_ok = _fit_once(x, y, boot_psi, lo, hi, max_iter, tol)
+            except SegmentedFitError:
                 continue
             rss = _rss_no_gamma(x, y, cand_psi)
             if best is None or rss < best[0]:
-                best = (rss, cand_psi)
+                best = (rss, cand_psi, cand_ok)
 
     if best is None:
         raise SegmentedFitError(
             f"segmented regression did not converge for npsi={psi_init.size} within [{lo:.6g}, {hi:.6g}]"
         )
 
-    psi = np.sort(best[1])
+    _, psi, converged = best
+    psi = np.sort(psi)
+    if not converged:
+        warnings.warn(f"segmented: max number of iterations ({max_iter}) attained", stacklevel=2)
     intercept, slopes, residuals = _final_model(x, y, psi)
     return SegmentedFit(
         psi=psi,
@@ -293,5 +382,5 @@ def segmented(
         intercept=intercept,
         residuals=residuals,
         rmse=float(np.sqrt(np.mean(residuals**2))),
-        converged=True,
+        converged=converged,
     )

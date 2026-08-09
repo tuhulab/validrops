@@ -10,6 +10,7 @@ EXPECTED = {
     "rollmean_reference.csv": ["case", "index", "value"],
     "uik_reference.csv": ["case", "knee"],
     "segmented_reference.csv": ["case", "term", "value"],
+    "segmented_boot_reference.csv": ["case", "term", "value"],
     "deviance_reference.csv": ["gene", "deviance"],
     "wilcoxauc_reference.csv": ["feature", "auc", "pval", "pct_in", "pct_out"],
     "annotation_genesets.csv": ["gene", "set"],
