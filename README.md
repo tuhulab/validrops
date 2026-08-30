@@ -5,9 +5,9 @@
 [![License][badge-license]][license]
 [![Python 3.11+][badge-python]][pypi]
 
-[badge-tests]: https://img.shields.io/github/actions/workflow/status/INFIMM-Bioinformatics/validrops/test.yaml?branch=main
+[badge-tests]: https://img.shields.io/github/actions/workflow/status/tuhulab/validrops/test.yaml?branch=main
 [badge-docs]: https://img.shields.io/readthedocs/validrops
-[badge-license]: https://img.shields.io/github/license/INFIMM-Bioinformatics/validrops
+[badge-license]: https://img.shields.io/github/license/tuhulab/validrops
 [badge-python]: https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white
 
 Automated quality control of droplet-based single-cell and single-nucleus RNA-seq data.
@@ -216,11 +216,11 @@ recorded in `CITATION.cff`, which GitHub renders alongside this README.
 
 [uv]: https://github.com/astral-sh/uv
 [scverse discourse]: https://discourse.scverse.org/
-[issue tracker]: https://github.com/INFIMM-Bioinformatics/validrops/issues
-[tests]: https://github.com/INFIMM-Bioinformatics/validrops/actions/workflows/test.yaml
+[issue tracker]: https://github.com/tuhulab/validrops/issues
+[tests]: https://github.com/tuhulab/validrops/actions/workflows/test.yaml
 [documentation]: https://validrops.readthedocs.io
 [changelog]: https://validrops.readthedocs.io/en/latest/changelog.html
-[contributing]: https://github.com/INFIMM-Bioinformatics/validrops/blob/main/docs/contributing.md
-[code of conduct]: https://github.com/INFIMM-Bioinformatics/validrops/blob/main/CODE_OF_CONDUCT.md
-[license]: https://github.com/INFIMM-Bioinformatics/validrops/blob/main/LICENSE
+[contributing]: https://github.com/tuhulab/validrops/blob/main/docs/contributing.md
+[code of conduct]: https://github.com/tuhulab/validrops/blob/main/CODE_OF_CONDUCT.md
+[license]: https://github.com/tuhulab/validrops/blob/main/LICENSE
 [pypi]: https://pypi.org/project/validrops

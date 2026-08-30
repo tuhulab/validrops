@@ -47,8 +47,8 @@ dependencies = [
 ]
 # https://docs.pypi.org/project_metadata/#project-urls
 urls.Documentation = "https://validrops.readthedocs.io/"
-urls.Homepage = "https://github.com/INFIMM-Bioinformatics/validrops"
-urls.Source = "https://github.com/INFIMM-Bioinformatics/validrops"
+urls.Homepage = "https://github.com/tuhulab/validrops"
+urls.Source = "https://github.com/tuhulab/validrops"
 
 [dependency-groups]
 dev = [
