@@ -33,6 +33,8 @@ library(zoo)
 library(segmented)
 library(scry)
 library(presto)
+library(irlba)
+library(Seurat)
 
 set.seed(42)
 OUT <- "tests/reference_outputs"
@@ -260,6 +262,34 @@ write.csv(expr$stats, file.path(OUT, "stage3_stats.csv"), row.names = FALSE)
 # clusters: expression_metrics only returns the deep assignment
 deep <- data.frame(barcode = rownames(expr$clusters), deep = expr$clusters[, 1])
 write.csv(deep, file.path(OUT, "stage3_clusters_deep.csv"), row.names = FALSE)
+
+# Re-derive the intermediate embedding and both clusterings, mirroring
+# expression_metrics.R:58-94, so the Python port can be checked stage by stage.
+nz <- counts.filtered[Matrix::rowSums(counts.filtered) > 0, ]
+sf2 <- 10000 / Matrix::colSums(nz)
+nt <- Matrix::t(Matrix::t(nz) * sf2)
+nt@x <- log1p(nt@x)
+dev2 <- scry::devianceFeatureSelection(nz)
+vf <- names(which(rank(-dev2) <= 5000))
+dat <- Matrix::t(nt[rownames(nt) %in% vf, ])
+mu <- Matrix::colMeans(dat)
+nr <- nrow(dat)
+sds <- sqrt((Matrix::colMeans(dat * dat) - mu^2) * (nr / (nr - 1)))
+sds[sds == 0] <- 1
+scaled <- Matrix::t((Matrix::t(dat) - mu) / sds)
+set.seed(42)
+sv <- irlba::irlba(scaled, nv = 10, nu = 10)
+emb <- sv$u %*% diag(sv$d)
+rownames(emb) <- rownames(scaled)
+colnames(emb) <- paste0("PC_", 1:10)
+write.csv(data.frame(barcode = rownames(emb), emb),
+          file.path(OUT, "stage3_embedding.csv"), row.names = FALSE)
+snn <- Seurat::FindNeighbors(emb, verbose = FALSE)$snn
+shallow <- Seurat::FindClusters(snn, verbose = FALSE, res = 0.1)
+write.csv(data.frame(barcode = rownames(shallow),
+                     shallow = shallow[, 1],
+                     deep = expr$clusters[rownames(shallow), 1]),
+          file.path(OUT, "stage3_clusters.csv"), row.names = FALSE)
 
 ## ------------------------------------------------------------------ stage 3b
 

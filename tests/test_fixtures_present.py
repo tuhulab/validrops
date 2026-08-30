@@ -28,6 +28,8 @@ EXPECTED = {
     "stage2_filters.csv": ["barcode", "pass_mito", "pass_distance", "pass_coding", "final"],
     "stage2_meta.csv": ["key", "value"],
     "stage3_clusters_deep.csv": ["barcode", "deep"],
+    "stage3_clusters.csv": ["barcode", "shallow", "deep"],
+    "stage3_embedding.csv": ["barcode", "PC_1"],
     "stage3_stats.csv": [
         "cluster",
         "pct.diff",

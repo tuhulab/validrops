@@ -134,6 +134,7 @@ testpaths = [ "tests" ]
 addopts = [
   "--import-mode=importlib", # allow using test files with same name
 ]
+markers = [ "slow: tests that take more than a few seconds" ]
 
 [tool.coverage]
 run.omit = [
