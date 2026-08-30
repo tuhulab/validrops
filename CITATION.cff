@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below and the original valiDrops paper."
+title: "validrops: automated quality control of droplet-based single-cell and single-nucleus RNA-seq data"
+abstract: >-
+  Python/scanpy port of the R package valiDrops. Ranks barcodes, filters on
+  quality-metric and expression-based cluster-metric thresholds, and optionally
+  labels dead cells, annotating an AnnData object in place.
+authors:
+  - family-names: Hu
+    given-names: Tu
+    email: tuhu@ssi.dk
+    affiliation: "Statens Serum Institut, Denmark"
+version: "0.0.1"
+date-released: "2026-08-30"
+license: GPL-3.0
+keywords:
+  - scrna-seq
+  - single-cell
+  - quality-control
+  - bioinformatics
+preferred-citation:
+  type: article
+  title: "Automatic quality control of single-cell and single-nucleus RNA-seq using valiDrops"
+  authors:
+    - family-names: Kavaliauskaite
+      given-names: Gabija
+    - family-names: Madsen
+      given-names: "Jesper Grud Skat"
+  year: 2023
+  journal: "NAR Genomics and Bioinformatics"
+  volume: 5
+  issue: 4
+  article-number: lqad101
+  doi: 10.1093/nargab/lqad101

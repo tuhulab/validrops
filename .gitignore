@@ -29,3 +29,10 @@ tests/data/
 # Developer-local markdown (kept out of git)
 /CLAUDE.md
 /DEVELOPMENT.md
+/AGENTS.md
+/Agentic Engineering Guide - Porting valiDrops to Python.md
+
+# Local agent tooling
+.claude/
+.commandcode/
+.superpowers/

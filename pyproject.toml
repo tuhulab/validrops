@@ -5,8 +5,16 @@ requires = [ "hatchling" ]
 [project]
 name = "validrops"
 version = "0.0.1"
-description = "automated QC for scRNA-seq data"
+description = "Automated quality control of droplet-based single-cell and single-nucleus RNA-seq data"
 readme = "README.md"
+keywords = [
+  "bioinformatics",
+  "quality-control",
+  "scanpy",
+  "scrna-seq",
+  "single-cell",
+  "single-nucleus",
+]
 license = { file = "LICENSE" }
 maintainers = [
   { name = "Tu Hu", email = "tuhu@ssi.dk" },
@@ -16,6 +24,9 @@ authors = [
 ]
 requires-python = ">=3.11"
 classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -33,8 +44,6 @@ dependencies = [
   "python-igraph",
   "scikit-learn",
   "scipy",
-  # for debug logging (referenced from the issue template)
-  "session-info2",
 ]
 # https://docs.pypi.org/project_metadata/#project-urls
 urls.Documentation = "https://validrops.readthedocs.io/"
@@ -46,6 +55,7 @@ dev = [
   "build>=1.6",
   "hatch>=1.18",
   "pre-commit",
+  "session-info2", # requested in bug reports for environment/debug logging; dev-only
   "twine>=7",
 ]
 test = [

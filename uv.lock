@@ -3763,7 +3763,6 @@ dependencies = [
     { name = "python-igraph" },
     { name = "scikit-learn" },
     { name = "scipy" },
-    { name = "session-info2" },
 ]
 
 [package.dev-dependencies]
@@ -3771,6 +3770,7 @@ dev = [
     { name = "build" },
     { name = "hatch" },
     { name = "pre-commit" },
+    { name = "session-info2" },
     { name = "twine" },
 ]
 doc = [
@@ -3812,14 +3812,14 @@ requires-dist = [
     { name = "python-igraph" },
     { name = "scikit-learn" },
     { name = "scipy" },
-    { name = "session-info2" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "build", specifier = ">=1.6.0" },
-    { name = "hatch", specifier = ">=1.18.0" },
+    { name = "build", specifier = ">=1.6" },
+    { name = "hatch", specifier = ">=1.18" },
     { name = "pre-commit" },
+    { name = "session-info2" },
     { name = "twine", specifier = ">=7" },
 ]
 doc = [
