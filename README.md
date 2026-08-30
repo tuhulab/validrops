@@ -1,13 +1,13 @@
-# validrops
+# validrops-py
 
 [![Tests][badge-tests]][tests]
 [![Documentation][badge-docs]][documentation]
 [![License][badge-license]][license]
 [![Python 3.11+][badge-python]][pypi]
 
-[badge-tests]: https://img.shields.io/github/actions/workflow/status/tuhulab/validrops/test.yaml?branch=main
-[badge-docs]: https://img.shields.io/readthedocs/validrops
-[badge-license]: https://img.shields.io/github/license/tuhulab/validrops
+[badge-tests]: https://img.shields.io/github/actions/workflow/status/tuhulab/validrops-py/test.yaml?branch=main
+[badge-docs]: https://img.shields.io/readthedocs/validrops-py
+[badge-license]: https://img.shields.io/github/license/tuhulab/validrops-py
 [badge-python]: https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white
 
 Automated quality control of droplet-based single-cell and single-nucleus RNA-seq data.
@@ -17,6 +17,9 @@ Automated quality control of droplet-based single-cell and single-nucleus RNA-se
 2023): it ranks barcodes, filters on quality metrics, filters on expression-based
 cluster metrics, and optionally labels dead cells — emitting an in-place
 annotated `AnnData` rather than a new object.
+
+The package is distributed on PyPI as **`validrops-py`** (to distinguish it from
+the original R package) but imported as **`validrops`**.
 
 ## Pipeline
 
@@ -216,11 +219,11 @@ recorded in `CITATION.cff`, which GitHub renders alongside this README.
 
 [uv]: https://github.com/astral-sh/uv
 [scverse discourse]: https://discourse.scverse.org/
-[issue tracker]: https://github.com/tuhulab/validrops/issues
-[tests]: https://github.com/tuhulab/validrops/actions/workflows/test.yaml
-[documentation]: https://validrops.readthedocs.io
-[changelog]: https://validrops.readthedocs.io/en/latest/changelog.html
-[contributing]: https://github.com/tuhulab/validrops/blob/main/docs/contributing.md
-[code of conduct]: https://github.com/tuhulab/validrops/blob/main/CODE_OF_CONDUCT.md
-[license]: https://github.com/tuhulab/validrops/blob/main/LICENSE
-[pypi]: https://pypi.org/project/validrops
+[issue tracker]: https://github.com/tuhulab/validrops-py/issues
+[tests]: https://github.com/tuhulab/validrops-py/actions/workflows/test.yaml
+[documentation]: https://validrops-py.readthedocs.io
+[changelog]: https://validrops-py.readthedocs.io/en/latest/changelog.html
+[contributing]: https://github.com/tuhulab/validrops-py/blob/main/docs/contributing.md
+[code of conduct]: https://github.com/tuhulab/validrops-py/blob/main/CODE_OF_CONDUCT.md
+[license]: https://github.com/tuhulab/validrops-py/blob/main/LICENSE
+[pypi]: https://pypi.org/project/validrops-py

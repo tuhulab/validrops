@@ -4,13 +4,13 @@
   "checkout": null,
   "context": {
     "cookiecutter": {
-      "project_name": "validrops",
+      "project_name": "validrops-py",
       "package_name": "validrops",
       "project_description": "automated QC for scRNA-seq data",
       "author_full_name": "Tu Hu",
       "author_email": "tuhu@ssi.dk",
-      "github_user": "INFIMM-Bioinformatics",
-      "github_repo": "validrops",
+      "github_user": "tuhulab",
+      "github_repo": "validrops-py",
       "license": "GNU General Public License Version 3",
       "ide_integration": true,
       "_copy_without_render": [

@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below and the original valiDrops paper."
-title: "validrops: automated quality control of droplet-based single-cell and single-nucleus RNA-seq data"
+title: "validrops-py: automated quality control of droplet-based single-cell and single-nucleus RNA-seq data"
 abstract: >-
   Python/scanpy port of the R package valiDrops. Ranks barcodes, filters on
   quality-metric and expression-based cluster-metric thresholds, and optionally

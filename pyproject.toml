@@ -3,7 +3,7 @@ build-backend = "hatchling.build"
 requires = [ "hatchling" ]
 
 [project]
-name = "validrops"
+name = "validrops-py"
 version = "0.0.1"
 description = "Automated quality control of droplet-based single-cell and single-nucleus RNA-seq data"
 readme = "README.md"
@@ -46,9 +46,9 @@ dependencies = [
   "scipy",
 ]
 # https://docs.pypi.org/project_metadata/#project-urls
-urls.Documentation = "https://validrops.readthedocs.io/"
-urls.Homepage = "https://github.com/tuhulab/validrops"
-urls.Source = "https://github.com/tuhulab/validrops"
+urls.Documentation = "https://validrops-py.readthedocs.io/"
+urls.Homepage = "https://github.com/tuhulab/validrops-py"
+urls.Source = "https://github.com/tuhulab/validrops-py"
 
 [dependency-groups]
 dev = [
