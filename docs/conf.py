@@ -65,7 +65,7 @@ extensions = [
     *[p.stem for p in (HERE / "extensions").glob("*.py")],
 ]
 
-autosummary_generate = True
+autosummary_generate = False  # API pages use explicit autofunction entries; generated stubs would duplicate them
 autodoc_member_order = "groupwise"
 default_role = "literal"
 napoleon_google_docstring = False
@@ -100,12 +100,13 @@ intersphinx_mapping = {
     "anndata": ("https://anndata.readthedocs.io/en/stable/", None),
     "scanpy": ("https://scanpy.readthedocs.io/en/stable/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
 }
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "**.ipynb_checkpoints"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "**.ipynb_checkpoints", "superpowers/**"]
 
 
 # -- Options for HTML output -------------------------------------------------

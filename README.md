@@ -18,6 +18,10 @@ Automated quality control of droplet-based single-cell and single-nucleus RNA-se
 cluster metrics, and optionally labels dead cells — emitting an in-place
 annotated `AnnData` rather than a new object.
 
+A runnable walkthrough on real 10x data lives in the
+[tutorial](https://validrops-py.readthedocs.io/en/latest/notebooks/tutorial.html)
+(also shipped as `docs/notebooks/tutorial.ipynb`).
+
 The package is distributed on PyPI as **`validrops-py`** (to distinguish it from
 the original R package) but imported as **`validrops`**.
 

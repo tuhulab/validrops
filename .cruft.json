@@ -24,7 +24,7 @@
         "README.md",
         "docs/api.md",
         "docs/index.md",
-        "docs/notebooks/example.ipynb",
+        "docs/notebooks/tutorial.ipynb",
         "docs/references.bib",
         "docs/references.md",
         "src/**",
