@@ -16,6 +16,7 @@ pieces <- list()
 for (i in seq_along(load_order)) {
   d <- as.data.frame(raw[[load_order[i]]])
   stopifnot(all(c("Chr", "Type", "Symbol") %in% colnames(d)))
+  row_ids <- seq_len(nrow(d))  # stable row identity, shared across every column of this table
   for (ci in seq_along(colnames(d))) {
     col <- colnames(d)[ci]
     pieces[[length(pieces) + 1]] <- data.frame(
@@ -23,6 +24,7 @@ for (i in seq_along(load_order)) {
       species_index = i,          # R's which.max ties break toward the first table
       column_name  = col,
       column_index = ci,          # ... and toward the first column within it
+      row_id       = row_ids,     # position within this species' table; aligns column slices
       value        = as.character(d[[col]]),
       chr          = as.character(d$Chr),
       type         = as.character(d$Type),
