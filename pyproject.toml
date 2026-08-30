@@ -43,8 +43,10 @@ urls.Source = "https://github.com/INFIMM-Bioinformatics/validrops"
 
 [dependency-groups]
 dev = [
+  "build>=1.6",
+  "hatch>=1.18",
   "pre-commit",
-  "twine>=4.0.2",
+  "twine>=7",
 ]
 test = [
   "coverage>=7.10",
@@ -70,7 +72,6 @@ doc = [
 
 [tool.hatch]
 build.targets.wheel.packages = [ "src/validrops" ]
-build.targets.wheel.force-include = { "src/validrops/data" = "validrops/data" }
 envs.default.installer = "uv"
 envs.default.dependency-groups = [ "dev" ]
 envs.docs.dependency-groups = [ "doc" ]

@@ -8,10 +8,38 @@
 
 automated QC for scRNA-seq data
 
+`validrops` is a Python/scanpy port of the R package
+[valiDrops](https://doi.org/10.1093/nargab/lqad101) (Kavaliauskaite & Madsen,
+2023): it ranks barcodes, filters on quality metrics, filters on expression-based
+cluster metrics, and optionally labels dead cells — emitting an in-place
+annotated `AnnData` rather than a new object.
+
 ## Getting started
 
-Please refer to the [documentation][],
-in particular, the [API documentation][].
+Please refer to the [documentation][], in particular, the [API documentation][].
+
+### Usage
+
+```python
+import scanpy as sc
+import validrops
+
+adata = sc.read_10x_h5("raw_feature_bc_matrix.h5")
+adata.var_names_make_unique()
+
+validrops.validrops(adata)          # annotates in place
+
+clean = adata[adata.obs["qc_pass"]].copy()
+```
+
+The object is **annotated in place** — nothing is removed from `adata`. The QC
+verdict lands in `adata.obs["qc_pass"]`, per-stage diagnostics in
+`adata.obs` (e.g. `rank_pass`, `pass_mito`, `cluster`) and
+`adata.uns["validrops"]` (thresholds, gene sets, params). Subset afterwards with
+`adata[adata.obs["qc_pass"]].copy()`.
+
+For very large datasets run `validrops.validrops(adata)` as-is first; the
+`label_dead` stage (slow, stochastic) is off by default.
 
 ## Installation
 

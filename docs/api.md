@@ -1,39 +1,33 @@
 # API
 
-## Preprocessing
+## Pipeline
 
 ```{eval-rst}
-.. module:: validrops.pp
-.. currentmodule:: validrops
-
-.. autosummary::
-    :toctree: generated
-
-    pp.basic_preproc
-    pp.elaborate_example
+.. autofunction:: validrops.validrops
 ```
 
-## Tools
+## Preprocessing: `pp`
 
 ```{eval-rst}
-.. module:: validrops.tl
-.. currentmodule:: validrops
-
-.. autosummary::
-    :toctree: generated
-
-    tl.basic_tool
+.. autofunction:: validrops.pp.rank_barcodes
+.. autofunction:: validrops.pp.quality_filter
+.. autofunction:: validrops.pp.expression_filter
+.. autofunction:: validrops.pp.label_dead
 ```
 
-## Plotting
+## Tools: `tl`
 
 ```{eval-rst}
-.. module:: validrops.pl
-.. currentmodule:: validrops
+.. autofunction:: validrops.tl.quality_metrics
+.. autofunction:: validrops.tl.expression_metrics
+```
 
-.. autosummary::
-    :toctree: generated
+## Plotting: `pl`
 
-    pl.basic_plot
-    pl.BasicClass
+```{eval-rst}
+.. autofunction:: validrops.pl.barcode_rank
+.. autofunction:: validrops.pl.mito_threshold
+.. autofunction:: validrops.pl.umi_vs_features
+.. autofunction:: validrops.pl.coding_fraction
+.. autofunction:: validrops.pl.dead_score
 ```

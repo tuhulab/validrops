@@ -130,7 +130,7 @@ pygments_style = "default"
 katex_prerender = shutil.which(katex.NODEJS_BINARY) is not None
 
 nitpick_ignore = [
-    # If building the documentation fails because of a missing link that is outside your control,
-    # you can add an exception to this list.
-    #     ("py:class", "igraph.Graph"),
+    # matplotlib's public Axes lives at matplotlib.axes.Axes but the inferred
+    # annotation points at the private module; don't fail the docs build on it.
+    ("py:class", "matplotlib.axes._axes.Axes"),
 ]
