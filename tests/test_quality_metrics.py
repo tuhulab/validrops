@@ -22,25 +22,6 @@ def staged(raw_adata, ref):
         ("log_features", "logFeatures"),
         ("mitochondrial_fraction", "mitochondrial_fraction"),
         ("ribosomal_fraction", "ribosomal_fraction"),
-        pytest.param(
-            "coding_fraction",
-            "coding_fraction",
-            marks=pytest.mark.xfail(
-                reason=(
-                    "Known data quirk (task-4 ledger finding, confirmed here): 23 of the 34 gene "
-                    "symbols duplicated in the raw h5 fall in the protein-coding set. scanpy's "
-                    "var_names_make_unique() renames the second occurrence to SYMBOL-1, and "
-                    "clean_gene_ids() only strips Ensembl version suffixes (not -1/-2 dedup "
-                    "suffixes), so gene_sets() misses the renamed occurrence -- its counts are "
-                    "excluded from the Python numerator but included in R's un-deduplicated "
-                    "rownames sum. Affects 320/5189 barcodes, max abs diff ~0.0056. Fixing this "
-                    "(e.g. matching gene-set membership on the pre-dedup name) is a "
-                    "controller-level judgment call, not something to invent inside this task -- "
-                    "see task-13-report.md."
-                ),
-                strict=True,
-            ),
-        ),
     ],
 )
 def test_metric_matches_r(staged, ref, obs_col, ref_col):
@@ -48,6 +29,39 @@ def test_metric_matches_r(staged, ref, obs_col, ref_col):
     got = staged.obs.loc[expected.index, obs_col]
     np.testing.assert_allclose(got.to_numpy(), expected.to_numpy(), rtol=1e-8)
     assert np.corrcoef(got, expected)[0, 1] > 0.99
+
+
+def test_coding_fraction_matches_r_within_bound(staged, ref):
+    """``coding_fraction`` has a known, bounded drift from R -- not exact like the other four.
+
+    Root cause (task-4 ledger finding, confirmed by direct measurement): of the 34 gene
+    symbols duplicated in the raw h5, 23 fall in the protein-coding set (0 in mito/ribo,
+    which is why those four metrics above are exact). scanpy's ``var_names_make_unique()``
+    renames each duplicate's second occurrence to ``SYMBOL-1``, and ``clean_gene_ids()``
+    only strips Ensembl version suffixes (not the ``-1``/``-2`` dedup suffix), so
+    ``gene_sets()`` matches only the base-name row and misses the renamed one. R's
+    un-deduplicated ``rownames`` sums both rows via ``%in%``, so R's numerator is larger
+    wherever a droplet has nonzero counts on the renamed duplicate. This is PARKED per
+    the task-13 ledger ruling: a real fix needs either recovering pre-dedup names through
+    the whole adata lifecycle (bigger than this task -- var_names_make_unique() is a
+    standard scanpy step applied before valiDrops sees the data) or a suffix-stripping
+    heuristic with real false-positive risk for symbols that legitimately end ``-<digit>``.
+
+    Measured against the full pbmc4k fixture: Pearson r = 0.9999963 (>> the project's
+    0.99 bar), 320/5189 barcodes (6.2%) differ by more than 1e-6, worst single-barcode
+    absolute difference 0.005587 (~0.56 percentage points). The bounds below give real
+    headroom above those measured values so a future regression that widens the drift
+    (e.g. a bug that breaks gene-set matching more broadly, not just on the known 23
+    duplicates) still fails loudly, rather than this staying an unbounded xfail forever.
+    """
+    expected = ref("stage2_metrics.csv").set_index("barcode")["coding_fraction"]
+    got = staged.obs.loc[expected.index, "coding_fraction"]
+
+    r = np.corrcoef(got, expected)[0, 1]
+    assert r > 0.99, f"coding_fraction: Pearson r = {r} against R"
+
+    diff = np.abs(got.to_numpy() - expected.to_numpy())
+    assert diff.max() < 0.01, f"coding_fraction: worst single-barcode diff {diff.max()} exceeds the 0.01 cap"
 
 
 def test_non_rank_passing_barcodes_are_nan(staged):
