@@ -25,3 +25,7 @@ Rplots.pdf
 
 # Large test fixtures (copied into worktrees, never committed)
 tests/data/
+
+# Developer-local markdown (kept out of git)
+/CLAUDE.md
+/DEVELOPMENT.md
