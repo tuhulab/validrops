@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "benchmark": "tier-s",
+  "revision": "c9a1c8ceb578795d8288704fe9696a349b86c8c7",
+  "dirty": true,
+  "environment": {
+    "os": "Darwin",
+    "os_release": "25.5.0",
+    "architecture": "arm64",
+    "python_version": "3.12.12",
+    "python_implementation": "CPython",
+    "logical_cpus": 14,
+    "physical_cpus": 14,
+    "available_memory_bytes": 25769803776,
+    "numpy_version": "2.4.4",
+    "scipy_version": "1.17.1",
+    "sklearn_version": "unavailable",
+    "anndata_version": "0.12.10",
+    "igraph_version": "1.0.0",
+    "blas_config": {},
+    "blas_threadpool": "[{'numpy_version': '2.4.4',\n  'python': '3.12.12 (main, Oct 28 2025, 11:52:25) [Clang 20.1.4 ]',\n  'uname': uname_result(system='Darwin', node='Tus-MacBook-Pro.local', release='25.5.0', version='Darwin Kernel Version 25.5.0: Tue Jun  9 22:28:34 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6041', machine='arm64')},\n {'simd_extensions': {'baseline': ['NEON', 'NEON_FP16', 'NEON_VFPV4', 'ASIMD'],\n                      'found': ['ASIMDHP', 'ASIMDDP'],\n                      'not_found': ['ASIMDFHM']}},\n {'ignore_floating_point_errors_in_matmul': True}]",
+    "thread_environment": {
+      "OMP_NUM_THREADS": "4",
+      "OPENBLAS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "VECLIB_MAXIMUM_THREADS": "4"
+    }
+  },
+  "input": {
+    "profile": "S",
+    "params": {
+      "profile": "S",
+      "nfeats": 300,
+      "npcs": 10,
+      "k_min": 5,
+      "res_shallow": 0.1,
+      "top_n": 10,
+      "workload": "Stage-3 synthetic",
+      "seed": 0
+    },
+    "fingerprint": "5f4161d14d14f250",
+    "meta": {
+      "profile": "S",
+      "cells": 500,
+      "genes": 2000,
+      "density": 0.02,
+      "realized_density": 0.025269,
+      "nnz": 25269,
+      "dtype": "float32",
+      "seed": 0,
+      "duplicate_names": {
+        "n_symbols_duplicated": 6,
+        "pattern": "6 symbols duplicated once at the tail of the name vector; all matrix operations are positional"
+      },
+      "clusters": {
+        "n_clusters": 4,
+        "sizes": [
+          125,
+          125,
+          125,
+          125
+        ],
+        "mean_count_factors": [
+          0.6,
+          0.9,
+          1.2,
+          1.5
+        ],
+        "marker_block_size": 15,
+        "marker_offset": 64
+      },
+      "mitochondrial": [
+        "gene_000000",
+        "gene_000001",
+        "gene_000002",
+        "gene_000003",
+        "gene_000004",
+        "gene_000005",
+        "gene_000006",
+        "gene_000007"
+      ],
+      "ribosomal": [
+        "gene_000008",
+        "gene_000009",
+        "gene_000010",
+        "gene_000011",
+        "gene_000012",
+        "gene_000013",
+        "gene_000014",
+        "gene_000015"
+      ]
+    }
+  },
+  "implementation": {
+    "label": "current",
+    "source_hashes": {
+      "src/validrops/_constants.py": "d5b85f7e71247b1d",
+      "src/validrops/tl/_snn.py": "c0536038a02c3c1b",
+      "src/validrops/tl/expression_metrics.py": "91cc4303871f5a7c"
+    },
+    "harness_hashes": {
+      "benchmarks/_datasets.py": "500d54e5eb650f36",
+      "benchmarks/_measure.py": "c4069013023cdbd6",
+      "benchmarks/run.py": "1efcffac3a1dba0c"
+    }
+  },
+  "timing_seconds": {
+    "median": 3.618745082989335,
+    "minimum": 3.6064596250653267,
+    "mad": 0.006179125048220158,
+    "repetitions": 3,
+    "raw": [
+      3.618745082989335,
+      3.6064596250653267,
+      3.624924208037555
+    ],
+    "coefficient_of_variation": 0.002598789795374086
+  },
+  "peak_rss_bytes": {
+    "worker_max": 270712832,
+    "worker_min": 268795904,
+    "worker_mean": 269680640.0,
+    "per_sample": [
+      269533184,
+      270712832,
+      268795904
+    ],
+    "method": "resource.getrusage(RUSAGE_SELF).ru_maxrss inside each spawned child",
+    "scope": "process high-water including deterministic input generation and warm-up in the same child; identical inputs across baseline/current isolate the kernel delta",
+    "unit": "bytes"
+  },
+  "correctness": {
+    "status": "pass",
+    "metrics": {
+      "all_cells_clustered": true,
+      "stats_non_empty": true,
+      "stats_finite": true,
+      "n_clusters": 21,
+      "n_shallow_clusters": 4,
+      "stats_shape": [
+        21,
+        11
+      ],
+      "workload": "Stage-3 expression_metrics on deterministic synthetic data"
+    }
+  },
+  "warnings": [],
+  "pbmc": {
+    "available": true,
+    "path": "/Users/tuhu/Projects/validrops/tests/data/pbmc4k/raw.h5",
+    "override": "auto"
+  }
+}

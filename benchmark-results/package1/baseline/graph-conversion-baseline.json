@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "benchmark": "graph-conversion",
+  "revision": "c9a1c8ceb578795d8288704fe9696a349b86c8c7",
+  "dirty": true,
+  "environment": {
+    "os": "Darwin",
+    "os_release": "25.5.0",
+    "architecture": "arm64",
+    "python_version": "3.12.12",
+    "python_implementation": "CPython",
+    "logical_cpus": 14,
+    "physical_cpus": 14,
+    "available_memory_bytes": 25769803776,
+    "numpy_version": "2.4.4",
+    "scipy_version": "1.17.1",
+    "sklearn_version": "unavailable",
+    "anndata_version": "0.12.10",
+    "igraph_version": "1.0.0",
+    "blas_config": {},
+    "blas_threadpool": "[{'numpy_version': '2.4.4',\n  'python': '3.12.12 (main, Oct 28 2025, 11:52:25) [Clang 20.1.4 ]',\n  'uname': uname_result(system='Darwin', node='Tus-MacBook-Pro.local', release='25.5.0', version='Darwin Kernel Version 25.5.0: Tue Jun  9 22:28:34 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6041', machine='arm64')},\n {'simd_extensions': {'baseline': ['NEON', 'NEON_FP16', 'NEON_VFPV4', 'ASIMD'],\n                      'found': ['ASIMDHP', 'ASIMDDP'],\n                      'not_found': ['ASIMDFHM']}},\n {'ignore_floating_point_errors_in_matmul': True}]",
+    "thread_environment": null
+  },
+  "input": {
+    "profile": "S",
+    "params": {
+      "profile": "S",
+      "n_cells": 500,
+      "n_pcs": 10,
+      "n_clusters": 4,
+      "knn": 20,
+      "prune": 0.06666666666666667,
+      "k_min": 5,
+      "seed": 0
+    },
+    "fingerprint": "a61af7e34eb99d0d",
+    "meta": {
+      "n": 500,
+      "dim": 10,
+      "n_clusters": 4,
+      "seed": 0,
+      "cluster_sizes": [
+        125,
+        125,
+        125,
+        125
+      ],
+      "noise_scale": 0.3,
+      "center_scale": 5.0
+    }
+  },
+  "implementation": {
+    "label": "baseline",
+    "source_hashes": {
+      "src/validrops/_constants.py": "d5b85f7e71247b1d",
+      "src/validrops/tl/_snn.py": "ec34e0600e1820f3"
+    },
+    "harness_hashes": {
+      "benchmarks/_datasets.py": "500d54e5eb650f36",
+      "benchmarks/_measure.py": "c4069013023cdbd6",
+      "benchmarks/run.py": "1efcffac3a1dba0c"
+    }
+  },
+  "timing_seconds": {
+    "median": 6.199671166948974,
+    "minimum": 6.152154958806932,
+    "mad": 0.007232916075736284,
+    "repetitions": 7,
+    "raw": [
+      6.152433542069048,
+      6.152154958806932,
+      6.160300457850099,
+      6.20690408302471,
+      6.203518040943891,
+      6.199671166948974,
+      6.202851457986981
+    ],
+    "coefficient_of_variation": 0.004209513407423426
+  },
+  "peak_rss_bytes": {
+    "worker_max": 261537792,
+    "worker_min": 259883008,
+    "worker_mean": 260800512.0,
+    "per_sample": [
+      261537792,
+      261062656,
+      261160960,
+      260685824,
+      259883008,
+      260997120,
+      260276224
+    ],
+    "method": "resource.getrusage(RUSAGE_SELF).ru_maxrss inside each spawned child",
+    "scope": "process high-water including deterministic input generation and warm-up in the same child; identical inputs across baseline/current isolate the kernel delta",
+    "unit": "bytes"
+  },
+  "correctness": {
+    "status": "pass",
+    "metrics": {
+      "prepared_candidate": "absent",
+      "reason": "prepared helpers absent (cannot import name 'louvain_prepared' from 'validrops.tl._snn' (/Users/tuhu/Projects/validrops/src/validrops/tl/_snn.py))",
+      "n_resolutions_actual_sweep": 214,
+      "wrapper_search_deterministic": true,
+      "labels_cover_all_cells": true
+    }
+  },
+  "warnings": [],
+  "pbmc": {
+    "available": true,
+    "path": "/Users/tuhu/Projects/validrops/tests/data/pbmc4k/raw.h5",
+    "override": "auto"
+  }
+}

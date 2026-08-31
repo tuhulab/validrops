@@ -18,7 +18,7 @@ from validrops._constants import (
     UNS_KEY,
 )
 from validrops.tl._deviance import deviance_feature_selection
-from validrops.tl._snn import louvain, snn_graph
+from validrops.tl._snn import louvain_prepared, prepare_louvain_graph, snn_graph
 from validrops.tl._wilcox import wilcoxauc
 
 logger = logging.getLogger(__name__)
@@ -129,16 +129,20 @@ def expression_metrics(
     adata.obsm["X_validrops_pca"] = obsm
 
     if clusters is None:
-        graph = snn_graph(embedding)
-        shallow = louvain(graph, res_shallow, random_state=random_state)
-        deep = _deep_clustering(graph, k_min, random_state)
+        adjacency = snn_graph(embedding)
+        # Package 1: convert the SNN adjacency to igraph exactly once and reuse
+        # the same object for the shallow call AND every deep-sweep call.
+        prepared = prepare_louvain_graph(adjacency)
+        shallow = louvain_prepared(prepared, res_shallow, random_state=random_state)
+        deep = _deep_clustering(prepared, k_min, random_state)
     else:
         aligned = clusters.reindex(barcodes)
         if aligned.isna().any():
             raise ValueError("clusters must cover every QC-passing barcode")
         deep = aligned.to_numpy().astype(int)
-        graph = snn_graph(embedding)
-        shallow = louvain(graph, res_shallow, random_state=random_state)
+        adjacency = snn_graph(embedding)
+        prepared = prepare_louvain_graph(adjacency)
+        shallow = louvain_prepared(prepared, res_shallow, random_state=random_state)
 
     stats = _cluster_stats(norm, gene_names, deep, shallow, gene_sets, counts, top_n)
 
@@ -172,18 +176,19 @@ def _embed(norm: sp.csr_matrix, npcs: int, random_state: int) -> np.ndarray:
     return u[:, order] * s[order]
 
 
-def _deep_clustering(graph, k_min: int, random_state: int) -> np.ndarray:
+def _deep_clustering(prepared_graph, k_min: int, random_state: int) -> np.ndarray:
     """Resolution search targeting a smallest cluster of ``k_min``.
 
     Ports ``expression_metrics.R:97-116``: a coarse 1..20 sweep, a +/-0.9
     refinement at 0.1 steps, then the largest resolution whose smallest
     cluster is exactly ``k_min``, falling back to the nearest achievable size.
     R's seq() values are kept unrounded because FindClusters consumes them as
-    doubles and the resolution selection is order-sensitive.
+    doubles and the resolution selection is order-sensitive. All Louvain calls
+    reuse the prepared igraph passed in (Package 1).
     """
 
     def smallest(resolution: float) -> tuple[int, np.ndarray]:
-        labels = louvain(graph, resolution, random_state=random_state)
+        labels = louvain_prepared(prepared_graph, resolution, random_state=random_state)
         return int(np.bincount(labels).min()), labels
 
     # coarse sweep, res = 1..20 (R:104-106)
@@ -212,6 +217,41 @@ def _deep_clustering(graph, k_min: int, random_state: int) -> np.ndarray:
     return labels
 
 
+def _sparse_expm1_col_mean(matrix: sp.spmatrix) -> np.ndarray:
+    """Column means of ``expm1`` over a sparse matrix, accumulated in float64.
+
+    The log-normalized matrix stores ``log1p`` values sparsely; the marker
+    fold-change needs ``mean(expm1(x))`` per gene. Implicit zeros contribute
+    ``expm1(0) - 1 = 0`` for free, so only the stored entries are transformed.
+    Duplicate coordinates are coalesced with ``sum_duplicates`` *before*
+    ``expm1``, matching what a dense assembly (``toarray``) would do:
+    ``expm1(a + b) != expm1(a) + expm1(b)``, so the order matters. The input is
+    never mutated: ``tocsr(copy=True)`` always copies the arrays.
+
+    Parameters
+    ----------
+    matrix
+        Sparse cells x genes matrix. May be non-canonical CSR/CSC with
+        duplicate coordinates and any storage dtype.
+
+    Returns
+    -------
+    float64 array of per-gene ``mean(expm1)``, length ``n_genes``.
+
+    Raises
+    ------
+    ValueError
+        If the matrix has zero rows (no valid mean). ``_cluster_stats`` never
+        passes this because it skips empty target/rest groups.
+    """
+    if matrix.shape[0] == 0:
+        raise ValueError("cannot take a column mean of a zero-row sparse matrix")
+    transformed = matrix.tocsr(copy=True).astype(np.float64, copy=False)
+    transformed.sum_duplicates()
+    transformed.data = np.expm1(transformed.data)
+    return np.asarray(transformed.sum(axis=0, dtype=np.float64)).ravel() / transformed.shape[0]
+
+
 def _cluster_stats(norm, gene_names, deep, shallow, gene_sets, counts, top_n) -> pd.DataFrame:
     """Per-cluster marker statistics. Ports ``expression_metrics.R:118-197``."""
     mito_idx = np.isin(gene_names, list(gene_sets["mitochondrial"]))
@@ -234,9 +274,11 @@ def _cluster_stats(norm, gene_names, deep, shallow, gene_sets, counts, top_n) ->
         with np.errstate(divide="ignore", invalid="ignore"):
             pct_diff = (pct1 - pct2) / pct1
 
-        # expression_metrics.R:142-143 — log2 fold change over expm1 means
-        mean_target = np.asarray(np.expm1(norm[target].todense()).mean(axis=0)).ravel()
-        mean_rest = np.asarray(np.expm1(norm[rest].todense()).mean(axis=0)).ravel()
+        # expression_metrics.R:142-143 — log2 fold change over expm1 means.
+        # Package 1: sparse float64 reduction (no todense); mathematically
+        # identical to the dense oracle, with float64 accumulation like R.
+        mean_target = _sparse_expm1_col_mean(norm[target])
+        mean_rest = _sparse_expm1_col_mean(norm[rest])
         fold_change = np.log2(mean_target + 1) - np.log2(mean_rest + 1)
 
         # expression_metrics.R:146-150 — max(pct.1, pct.2) >= 0.1 & fc >= 0.25

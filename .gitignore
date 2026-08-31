@@ -36,3 +36,6 @@ tests/data/
 .claude/
 .commandcode/
 .superpowers/
+
+# Performance benchmark artifacts (Package 1)
+/benchmark-results/

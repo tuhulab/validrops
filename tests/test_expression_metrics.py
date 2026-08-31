@@ -1,5 +1,7 @@
 import numpy as np
+import pandas as pd
 import pytest
+import scipy.sparse as sp
 from sklearn.metrics import adjusted_rand_score
 
 import validrops
@@ -124,3 +126,194 @@ def test_nfeats_must_exceed_npcs(raw_adata):
     adata.obs["qc_pass"] = True
     with pytest.raises(ValueError, match="nfeats"):
         validrops.tl.expression_metrics(adata, nfeats=5, npcs=10)
+
+
+# ---------------------------------------------------------------------------
+# Sparse expm1 column means (Package 1, Performance)
+# ---------------------------------------------------------------------------
+
+
+def _build_patch_matrix() -> sp.csr_matrix:
+    """8 x 10 float32 CSR with every adversarial column class: an all-zero
+    gene (col 0), a single non-zero value (cols 3/4/6/7/8/9), tied non-zero
+    values (col 2), cells with unequal zero fractions, and real duplicate
+    coordinates at (0, 1) with values 1.0 and 2.0.
+
+    Built through the ``(data, indices, indptr)`` constructor because the
+    ``(data, (row, col))`` form canonicalizes duplicates immediately in modern
+    SciPy -- the reviewer-demanded duplicate-coordinate fixture needs a
+    genuinely non-canonical CSR.
+    """
+    indptr = np.array([0, 2, 3, 5, 7, 8, 10, 11, 12])
+    indices = np.array([1, 1, 3, 2, 7, 0, 4, 6, 2, 5, 8, 9])
+    vals = np.array([1.0, 2.0, 6.0, 5.0, 5.0, 7.0, 8.0, 9.0, 5.0, 10.0, 11.0, 12.0], dtype=np.float32)
+    return sp.csr_matrix((vals, indices, indptr), shape=(8, 10), dtype=np.float32)
+
+
+def test_sparse_expm1_col_mean_matches_dense_float64_oracle():
+    from validrops.tl.expression_metrics import _sparse_expm1_col_mean
+
+    matrix = _build_patch_matrix()
+    # Reviewer rule: cast the dense oracle to float64 BEFORE expm1, then
+    # accumulate the mean in float64 -- the same arithmetic the sparse path
+    # performs, so the comparison is exactly float64-vs-float64.
+    expected = np.expm1(matrix.toarray().astype(np.float64)).mean(axis=0, dtype=np.float64)
+    actual = _sparse_expm1_col_mean(matrix)
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+    assert actual.dtype == np.float64
+
+
+def test_duplicate_coordinates_are_summed_before_expm1():
+    """expm1(5+6) != expm1(5) + expm1(6): the sparse path must coalesce
+    duplicate coordinates (sum_duplicates) before transforming values."""
+    from validrops.tl.expression_metrics import _sparse_expm1_col_mean
+
+    # rows 0 and 2, both with coordinates in column 3; row 0 carries three
+    # duplicate (0, 3) entries (values 5, 6, 7) via the non-canonical form.
+    indptr = np.array([0, 3, 3, 4, 4])
+    indices = np.array([3, 3, 3, 3])
+    vals = np.array([5.0, 6.0, 7.0, 1.0], dtype=np.float32)
+    matrix = sp.csr_matrix((vals, indices, indptr), shape=(4, 6), dtype=np.float32)
+    assert matrix.has_canonical_format is False
+
+    dense = np.zeros((4, 6), dtype=np.float64)
+    dense[0, 3] = 18.0  # 5+6+7 coalesced
+    dense[2, 3] = 1.0
+    expected = np.expm1(dense).mean(axis=0, dtype=np.float64)
+
+    actual = _sparse_expm1_col_mean(matrix)
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+    # Guard against the naive wrong path (expm1 per entry, then sum): for this
+    # column the values are expm1(5)+expm1(6)+expm1(7), which differs.
+    naive = (np.expm1(5.0) + np.expm1(6.0) + np.expm1(7.0) + np.expm1(1.0)) / 4
+    assert naive != pytest.approx(actual[3])
+
+
+def test_sparse_expm1_col_mean_handles_sliced_non_canonical_csr():
+    from validrops.tl.expression_metrics import _sparse_expm1_col_mean
+
+    matrix = _build_patch_matrix()
+    # Repeated row indices in a fancy slice produce non-canonical CSR with real
+    # duplicate coordinates; the reduction must still equal the dense oracle.
+    sliced = matrix[[0, 5, 3, 5, 7, 1]]
+    assert sliced.has_canonical_format is False
+    expected = np.expm1(sliced.toarray().astype(np.float64)).mean(axis=0, dtype=np.float64)
+    actual = _sparse_expm1_col_mean(sliced)
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_sparse_expm1_col_mean_does_not_mutate_input():
+    from validrops.tl.expression_metrics import _sparse_expm1_col_mean
+
+    matrix = _build_patch_matrix()
+    indptr, indices, data = matrix.indptr.copy(), matrix.indices.copy(), matrix.data.copy()
+    shape, dtype = matrix.shape, matrix.dtype
+    canonical_before = matrix.has_canonical_format
+    assert canonical_before is False  # the fixture carries duplicate coordinates
+
+    _sparse_expm1_col_mean(matrix)
+
+    np.testing.assert_array_equal(indptr, matrix.indptr)
+    np.testing.assert_array_equal(indices, matrix.indices)
+    np.testing.assert_array_equal(data, matrix.data)
+    assert matrix.shape == shape
+    assert matrix.dtype == dtype
+    assert matrix.has_canonical_format is canonical_before
+
+
+def test_sparse_expm1_col_mean_rejects_zero_rows():
+    from validrops.tl.expression_metrics import _sparse_expm1_col_mean
+
+    empty = sp.csr_matrix((0, 5), dtype=np.float32)
+    with pytest.raises(ValueError, match="zero-row"):
+        _sparse_expm1_col_mean(empty)
+
+
+def _tiny_stage3_adata() -> object:
+    """Self-contained synthetic AnnData for Stage-3 integration tests (no PBMC
+    fixture needed): 60 cells x 120 genes with cluster structure, full qc_pass
+    and the gene sets the pipeline requires."""
+    import anndata as ad
+
+    rng = np.random.default_rng(0)
+    X = sp.csr_matrix(rng.poisson(lam=3.0, size=(60, 120)).astype(np.float32))
+    # give the simulated clusters real marker signal for the eligibility gate
+    X = X.tolil()
+    for cluster, (start, stop) in enumerate([(10, 25), (40, 55), (70, 85), (100, 115)]):
+        for cell in range(cluster * 15, (cluster + 1) * 15):
+            X[cell, start:stop] = rng.poisson(lam=9.0, size=(1, stop - start)).astype(np.float32)
+    adata = ad.AnnData(X=X.tocsr())
+    adata.var_names = [f"gene_{i:03d}" for i in range(120)]
+    adata.obs["qc_pass"] = True
+    adata.uns["validrops"] = {
+        "gene_sets": {"mitochondrial": ["gene_000", "gene_001"], "ribosomal": ["gene_002", "gene_003"]}
+    }
+    return adata
+
+
+def test_stage3_prepares_graph_once_and_sweeps_prepared(monkeypatch):
+    """A Stage-3 run without supplied clusters converts the SNN adjacency to
+    igraph exactly once, then the deep-clustering resolution sweep reuses that
+    single prepared graph through louvain_prepared many times."""
+    import importlib
+
+    em = importlib.import_module("validrops.tl.expression_metrics")
+    counters = {"prepare": 0, "prepared": 0}
+    real_prepare, real_prepared = em.prepare_louvain_graph, em.louvain_prepared
+
+    def counting_prepare(adjacency):
+        counters["prepare"] += 1
+        return real_prepare(adjacency)
+
+    def counting_prepared(graph, resolution, random_state=0):
+        counters["prepared"] += 1
+        return real_prepared(graph, resolution, random_state)
+
+    monkeypatch.setattr(em, "prepare_louvain_graph", counting_prepare)
+    monkeypatch.setattr(em, "louvain_prepared", counting_prepared)
+
+    validrops.tl.expression_metrics(_tiny_stage3_adata(), nfeats=30, npcs=5, random_state=0)
+
+    assert counters["prepare"] == 1, "SNN -> igraph conversion must happen exactly once per run"
+    assert counters["prepared"] >= 2, "shallow call plus the deep resolution sweep"
+
+
+def test_stage3_with_injected_clusters_still_prepares_once(monkeypatch):
+    import importlib
+
+    em = importlib.import_module("validrops.tl.expression_metrics")
+    counters = {"prepare": 0, "prepared": 0}
+    real_prepare, real_prepared = em.prepare_louvain_graph, em.louvain_prepared
+
+    def counting_prepare(adjacency):
+        counters["prepare"] += 1
+        return real_prepare(adjacency)
+
+    def counting_prepared(graph, resolution, random_state=0):
+        counters["prepared"] += 1
+        return real_prepared(graph, resolution, random_state)
+
+    monkeypatch.setattr(em, "prepare_louvain_graph", counting_prepare)
+    monkeypatch.setattr(em, "louvain_prepared", counting_prepared)
+
+    adata = _tiny_stage3_adata()
+    clusters = pd.Series(np.tile([0, 1], adata.n_obs // 2), index=adata.obs_names)
+    validrops.tl.expression_metrics(adata, nfeats=30, npcs=5, clusters=clusters, random_state=0)
+
+    assert counters["prepare"] == 1
+    assert counters["prepared"] >= 1  # supplied clusters still need shallow clustering
+
+
+def test_stage3_never_calls_louvain_wrapper(monkeypatch):
+    """After the graph-reuse refactor the ``louvain`` wrapper must not be used
+    anywhere in Stage 3 (not imported, not called)."""
+    import importlib
+
+    em = importlib.import_module("validrops.tl.expression_metrics")
+    assert not hasattr(em, "louvain"), "Stage 3 must use prepared-graph Louvain, not the wrapper"
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("louvain wrapper must not be called by Stage 3")
+
+    monkeypatch.setattr("validrops.tl._snn.louvain", _boom)
+    validrops.tl.expression_metrics(_tiny_stage3_adata(), nfeats=30, npcs=5, random_state=0)
